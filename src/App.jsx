@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -11,6 +11,8 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon
 } from 'lucide-react';
 import './App.css';
 import Dashboard from './components/Dashboard';
@@ -19,6 +21,7 @@ import CashlessPreparation from './components/CashlessPreparation';
 import PreauthReview from './components/PreauthReview';
 import PreauthStatus from './components/PreauthStatus';
 import PayerNetwork from './components/PayerNetwork';
+import { api } from './api';
 import { Button } from './components/Common';
 
 function App() {
@@ -26,6 +29,13 @@ function App() {
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState('light');
+  
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
   
   // Close mobile menu on route change
   useEffect(() => {
@@ -39,6 +49,28 @@ function App() {
   const [selectedPolicy, setSelectedPolicy] = useState(null);
   const [cashlessCase, setCashlessCase] = useState(null);
   const [preauthResponse, setPreauthResponse] = useState(null);
+
+  // Recovery logic for page refresh
+  useEffect(() => {
+    const pathParts = location.pathname.split('/');
+    if (pathParts[1] === 'claims' && pathParts[2] && !selectedPatient) {
+      const patientId = pathParts[2];
+      api.searchChildren().then(res => {
+        const patient = res.children.find(p => p.child_id.toString() === patientId);
+        if (patient) {
+          setSelectedPatient(patient);
+          
+          // If we're on a deeper route, we might need default payer/policy if missing
+          if (!selectedPayer) {
+            setSelectedPayer({ participant_code: "1518@hcx", name: "Sample Payer", scheme_type: "PMJAY" });
+          }
+          if (!selectedPolicy) {
+            setSelectedPolicy({ policyNumber: "POL-91711234567890-2026", productName: "GeneralHealth-2026" });
+          }
+        }
+      });
+    }
+  }, [location.pathname, selectedPatient, selectedPayer, selectedPolicy]);
 
   const startNewWorkflow = (patient) => {
     setSelectedPatient(patient);
@@ -74,7 +106,7 @@ function App() {
   };
 
   return (
-    <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
+    <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`} data-theme={theme}>
       {/* Mobile Overlay */}
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -153,17 +185,33 @@ function App() {
             </button>
             <div className="breadcrumb-modern">
               Portal {location.pathname.split('/').map((p, i) => p && (
-                <React.Fragment key={i}>
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <ChevronRight size={14} />
                   <span className={i === location.pathname.split('/').length - 1 ? 'active' : ''}>
                     {p.charAt(0).toUpperCase() + p.slice(1).replace(/-/g, ' ')}
                   </span>
-                </React.Fragment>
+                </span>
               ))}
             </div>
           </div>
           
           <div className="top-actions">
+            <button 
+              onClick={toggleTheme} 
+              className="theme-toggle-btn"
+              style={{ 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                color: 'var(--text-muted)',
+                padding: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
             
             <div style={{ position: 'relative', cursor: 'pointer' }}>
               <Bell size={20} className="text-muted" />

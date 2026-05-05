@@ -79,10 +79,10 @@ const PayerPolicySelection = ({ patient, onPolicySelected, onBack }) => {
                   onClick={() => handlePayerSelect(payer)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div className="avatar-sm" style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#eef2ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="avatar-sm" style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Shield size={20} />
                     </div>
-                    <div className="item-info">
+                    <div className="item-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                       <span className="item-title">{payer.name}</span>
                       <span className="item-subtitle">{payer.scheme_type}</span>
                     </div>
@@ -108,23 +108,23 @@ const PayerPolicySelection = ({ patient, onPolicySelected, onBack }) => {
               </div>
             ) : (
               policies.map((policy) => (
-                <div key={policy.policyNumber} className="card-modern mb-4 p-6" style={{ border: '1px solid var(--border-color)', background: '#fcfcfd' }}>
+                <div key={policy.policyNumber} className="card-modern mb-4 p-6" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-main)' }}>
                   <div className="policy-header mb-4 flex-between">
                     <div>
-                      <span className="policy-title" style={{ fontSize: '18px', fontWeight: '700', color: 'var(--primary)', display: 'block' }}>{policy.productName}</span>
+                      <span className="policy-title" style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', display: 'block' }}>{policy.productName}</span>
                       <span className="policy-id text-muted" style={{ fontSize: '13px' }}>ID: {policy.policyNumber}</span>
                     </div>
                     <StatusBadge status={policy.status} />
                   </div>
                   
                   <div className="policy-details-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-                    <div className="detail">
-                      <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: '600' }}>Coverage Limit</label>
-                      <div style={{ fontWeight: '700', fontSize: '16px' }}>{policy.currency} {policy.sumInsured.toLocaleString()}</div>
+                    <div>
+                      <div className="label text-muted" style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Coverage Limit</div>
+                      <div style={{ fontWeight: '800', fontSize: '16px', color: 'var(--text-main)' }}>{policy.currency} {policy.sumInsured.toLocaleString()}</div>
                     </div>
-                    <div className="detail">
-                      <label style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: '600' }}>Effective Until</label>
-                      <div style={{ fontWeight: '700', fontSize: '16px' }}>{policy.effectiveTo}</div>
+                    <div>
+                      <div className="label text-muted" style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Effective Until</div>
+                      <div style={{ fontWeight: '800', fontSize: '16px', color: 'var(--text-main)' }}>{policy.validUntil}</div>
                     </div>
                   </div>
                   

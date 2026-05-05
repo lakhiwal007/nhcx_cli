@@ -20,8 +20,8 @@ const PreauthReview = ({
     try {
       const data = await api.preparePreauth({
         claim_id: cashlessCase?.claim_id || 101,
-        payer_code: payer.participant_code,
-        policyNumber: policy.policyNumber,
+        payer_code: payer?.participant_code || "1518@hcx",
+        policyNumber: policy?.policyNumber || "POL-91711234567890-2026",
       });
       setDraft(data);
     } catch (error) {
@@ -92,9 +92,9 @@ const PreauthReview = ({
                   className="icon-badge"
                   style={{
                     padding: "12px",
-                    background: "#eef2ff",
+                    background: "var(--primary-light)",
                     borderRadius: "12px",
-                    color: "#4f46e5",
+                    color: "var(--primary)",
                   }}
                 >
                   <Stethoscope size={24} />
@@ -123,9 +123,9 @@ const PreauthReview = ({
                   key={i}
                   className="flex-between mb-4 p-4"
                   style={{
-                    background: "#f8fafc",
+                    background: "var(--bg-main)",
                     borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     margin: "10px 0",
                   }}
                 >
@@ -139,7 +139,7 @@ const PreauthReview = ({
                   >
                     <span
                       style={{
-                        background: "#4f46e5",
+                        background: "var(--primary)",
                         color: "white",
                         fontSize: "10px",
                         padding: "2px 6px",
@@ -174,9 +174,9 @@ const PreauthReview = ({
                   className="icon-badge"
                   style={{
                     padding: "12px",
-                    background: "#ecfdf5",
+                    background: "rgba(5, 150, 105, 0.1)",
                     borderRadius: "12px",
-                    color: "#059669",
+                    color: "var(--success)",
                   }}
                 >
                   <Briefcase size={24} />
@@ -198,9 +198,9 @@ const PreauthReview = ({
                   key={i}
                   className="flex-between mb-4 p-4"
                   style={{
-                    background: "#f8fafc",
+                    background: "var(--bg-main)",
                     borderRadius: "12px",
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--border-color)",
                     margin: "10px 0",
                   }}
                 >
@@ -314,7 +314,7 @@ const PreauthReview = ({
             <div
               className="total-panel mt-8 p-6"
               style={{
-                background: "#f1f5f9",
+                background: "var(--primary-light)",
                 borderRadius: "12px",
                 display: "flex",
                 justifyContent: "flex-end",
@@ -355,7 +355,7 @@ const PreauthReview = ({
               <div
                 className="patient-snippet flex-center gap-4"
                 style={{
-                  background: "#f1f5f9",
+                  background: "var(--bg-main)",
                   padding: "16px",
                   borderRadius: "12px",
                   justifyContent: "flex-start",
@@ -366,7 +366,7 @@ const PreauthReview = ({
                     width: "40px",
                     height: "40px",
                     borderRadius: "50%",
-                    background: "white",
+                    background: "var(--bg-card)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -374,12 +374,12 @@ const PreauthReview = ({
                     color: "var(--primary)",
                   }}
                 >
-                  {patient?.name?.[0]}
+                  {(patient?.name || draft?.patient?.name || "P")[0]}
                 </div>
                 <div>
-                  <div style={{ fontWeight: "700" }}>{patient?.name}</div>
+                  <div style={{ fontWeight: "700" }}>{patient?.name || draft?.patient?.name || "Patient"}</div>
                   <div style={{ fontSize: "12px", color: "#64748b" }}>
-                    ID: {patient?.child_id}
+                    ID: {patient?.child_id || draft?.patient?.id || "N/A"}
                   </div>
                 </div>
               </div>
@@ -413,7 +413,7 @@ const PreauthReview = ({
                     Payer
                   </span>
                   <span style={{ fontSize: "13px", fontWeight: "600" }}>
-                    {payer.name}
+                    {payer?.name || draft?.payer_code || "N/A"}
                   </span>
                 </div>
               </div>

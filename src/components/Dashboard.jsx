@@ -70,7 +70,7 @@ const Dashboard = ({ onSelectPatient }) => {
         >
           <motion.div variants={item} className="stat-card-modern">
             <div className='stat-card-num'>
-              <div className="stat-icon-wrapper" style={{ background: '#eef2ff', color: '#4f46e5' }}>
+              <div className="stat-icon-wrapper stat-icon-primary">
               <FileText size={24} />
             </div>
             <span className="stat-value-modern">{stats.claims.total}</span>
@@ -81,7 +81,7 @@ const Dashboard = ({ onSelectPatient }) => {
           <motion.div variants={item} className="stat-card-modern">
             <div className='stat-card-num'>
 
-            <div className="stat-icon-wrapper" style={{ background: '#fffbeb', color: '#d97706' }}>
+            <div className="stat-icon-wrapper stat-icon-warning">
               <Clock size={24} />
             </div>
             <span className="stat-value-modern">{stats.claims.pending}</span>
@@ -92,7 +92,7 @@ const Dashboard = ({ onSelectPatient }) => {
           <motion.div variants={item} className="stat-card-modern">
             <div className='stat-card-num'>
 
-            <div className="stat-icon-wrapper" style={{ background: '#ecfdf5', color: '#059669' }}>
+            <div className="stat-icon-wrapper stat-icon-success">
               <CheckCircle size={24} />
             </div>
             <span className="stat-value-modern">{stats.claims.complete}</span>
@@ -103,7 +103,7 @@ const Dashboard = ({ onSelectPatient }) => {
           <motion.div variants={item} className="stat-card-modern">
             <div className='stat-card-num'>
 
-            <div className="stat-icon-wrapper" style={{ background: '#eff6ff', color: '#2563eb' }}>
+            <div className="stat-icon-wrapper stat-icon-info">
               <Users size={24} />
             </div>
             <span className="stat-value-modern">{stats.patients.with_claims}</span>
