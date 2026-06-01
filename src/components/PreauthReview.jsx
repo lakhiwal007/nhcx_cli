@@ -54,13 +54,14 @@ const PreauthReview = ({
     setSubmitting(true);
     try {
       const response = await api.submitPreauth(draft);
-      onSubmit(response);
+      onSubmit(response, draft);
     } catch (error) {
       console.error("Submission error:", error);
     } finally {
       setSubmitting(false);
     }
   };
+
 
   if (loading)
     return (

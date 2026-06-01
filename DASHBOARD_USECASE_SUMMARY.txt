@@ -1,0 +1,77 @@
+Project Implementation Summary
+
+1. Backend & System Capabilities (Implemented)
+--------------------------------------------------
+1. View Cashless Claim Summary
+   - Core logic to aggregate total claims, status counts, and preauth pending counts.
+2. View Patients With Claims
+   - Ability to identify unique patients with active workflows.
+3. Patient Registry Integration
+   - Search by child ID, name, or mobile; fetch latest claim status.
+4. Payer Registry Integration
+   - Search participant codes for the NHCX network.
+5. Policy Fetch (Coverage Eligibility)
+   - Integration with payer to retrieve available policies for a patient.
+6. Cashless Workflow Engine
+   - Starts insurance plan (IP) and coverage eligibility (CE) checks.
+7. Tracking Engine
+   - Aggregates status for procedures, benefits, and authorization requirements.
+8. Preauth Generation
+   - Loads hospital data (diagnoses, procedures, bill items, care team) into preauth drafts.
+9. Preauth Submission
+   - Handles the handshake with payers and tracking via correlation IDs.
+10. Preauth Status Monitoring
+    - Polls for adjudication decisions and amount breakdowns.
+11. Resubmission/Cancellation Logic
+    - Core logic to handle rejections or user-driven cancellations.
+
+
+2 Frontend UI/UX Screens (Using mock data)
+---------------------------------------------
+1. Dashboard Screen
+   - Aggregate statistics (Total, Pending, Completed claims).
+   - Patient Registry search by Name or Mobile.
+   - List of patients with ID, Gender, DOB, and current NHCX status.
+2. Payer & Policy Selection
+   - Searchable directory of NHCX payers.
+   - Fetching and displaying available policies for a specific patient.
+   - Policy details: Product name, coverage limits, and validity.
+3. Cashless Preparation
+   - Tracking progress of Insurance Plan (IP) and Coverage Eligibility (CE) requests.
+   - Displaying procedure details and medical diagnoses.
+   - Benefit breakdowns: Limit, Used, and Auth requirements.
+   - Inclusions/Exclusions and required preauth documents.
+4. Preauth Review Screen
+   - Comprehensive summary of clinical and financial data before submission.
+   - Diagnosis codes (ICD-10) and Procedure codes.
+   - Line-item breakdown of service costs.
+5. Preauth Status Tracking
+   - Real-time status of submitted preauths (Approved/Rejected/Query).
+   - Correlation IDs and Payer reference numbers.
+   - Error messages and notes from the payer.
+
+
+
+
+3. Pending Use Cases
+-----------------------------------
+1. Claim List View
+Dashboard summary exists, but a full claim list/table for all cashless cases is not finalized.
+
+2. Claim Detail Page
+Individual cashless case status exists, but a complete detail page flow is still pending.
+
+3. Filters And Sorting
+Pending filters include status, payer, date range, patient, preauth decision, and facility.
+
+4. Document Upload Flow
+Supporting documents can be passed, but dashboard document upload/management flow is not finalized.
+
+5. Final Claim / Discharge Flow
+Cashless and preauth flow is covered. Final claim submission, discharge, claim query response, claim resubmission, and claim status are not part of the dashboard flow yet.
+
+6. Payment Tracking
+Payment acknowledgement/status exists internally, but dashboard payment tracking is not exposed in this frontend dashboard flow yet.
+
+7. Multi-Facility Dashboard
+Architecture supports facilities, but dashboard-level facility filters and facility-wise stats are pending.
