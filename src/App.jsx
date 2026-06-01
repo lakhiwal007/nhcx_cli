@@ -116,10 +116,10 @@ function App() {
 
   // ─── Navigation handlers (each one calls persist) ─────────────────────────
 
-  const startNewWorkflow = (patient) => {
+  const startNewWorkflow = (patient, targetRoute = 'payer') => {
     setSelectedPatient(patient);
-    persist({ patient, resumeRoute: 'payer' });
-    navigate(`/claims/${patient.child_id}/payer`);
+    persist({ patient, resumeRoute: targetRoute });
+    navigate(`/claims/${patient.child_id}/${targetRoute}`);
   };
 
   const handlePolicySelected = (payer, policy) => {
