@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Search, CreditCard, Download, CheckCircle, ArrowRight } from "lucide-react";
-import { PageHeader, Card, StatusBadge, Button, Input, AmountGrid } from "./Common";
+import { Search, CreditCard, CheckCircle } from "lucide-react";
+import { PageHeader, Card, StatusBadge, Input } from "./Common";
 import { api } from "../api";
 import { useNavigate } from "react-router-dom";
 
@@ -25,16 +25,17 @@ export default function Payments() {
     fetchPayments();
   }, []);
 
-  const filtered = payments.filter(p => 
-    p.claim_reference?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    p.payment_reference?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filtered = payments.filter(
+    (p) =>
+      p.claim_reference?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.payment_reference?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
     <div className="payments-screen">
-      <PageHeader 
-        title="Payment Reconciliation" 
-        subtitle="Track payment settlements, UTRs, and TDS deductions from payers." 
+      <PageHeader
+        title="Payment Reconciliation"
+        subtitle="Track payment settlements, UTRs, and TDS deductions from payers."
       />
 
       <Card className="mb-6">
@@ -55,7 +56,11 @@ export default function Payments() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="empty-view py-20 text-center">
-          <CreditCard size={48} className="text-muted mb-4 mx-auto" style={{ opacity: 0.5 }} />
+          <CreditCard
+            size={48}
+            className="text-muted mb-4 mx-auto"
+            style={{ opacity: 0.5 }}
+          />
           <h3>No Payments Found</h3>
           <p className="text-muted mt-2">No matching payment records.</p>
         </div>
@@ -80,24 +85,58 @@ export default function Payments() {
                 {filtered.map((pay, i) => (
                   <tr key={i}>
                     <td style={{ fontWeight: 700 }}>{pay.payment_reference}</td>
-                    <td><a href="#" onClick={(e) => { e.preventDefault(); navigate(`/case/0/payment`); }}>{pay.claim_reference}</a></td>
+                    <td>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(`/case/0/payment`);
+                        }}
+                      >
+                        {pay.claim_reference}
+                      </a>
+                    </td>
                     <td>{pay.payment_date}</td>
                     <td>
-                      <StatusBadge status={pay.payment_stage?.replace('PAYMENT_', '')} />
+                      <StatusBadge
+                        status={pay.payment_stage?.replace("PAYMENT_", "")}
+                      />
                     </td>
                     <td>₹{pay.gross_amount?.toLocaleString()}</td>
-                    <td style={{ color: 'var(--error)' }}>-₹{pay.tds_amount?.toLocaleString()}</td>
-                    <td style={{ fontWeight: 800, color: 'var(--success)' }}>₹{pay.net_payment_amount?.toLocaleString()}</td>
-                    <td>
-                      {pay.utr ? <code>{pay.utr}</code> : <span className="text-muted">—</span>}
+                    <td style={{ color: "var(--error)" }}>
+                      -₹{pay.tds_amount?.toLocaleString()}
+                    </td>
+                    <td style={{ fontWeight: 800, color: "var(--success)" }}>
+                      ₹{pay.net_payment_amount?.toLocaleString()}
                     </td>
                     <td>
-                      {pay.acknowledgement_status === 'submitted' ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--success)', fontSize: '11px', fontWeight: 600 }}>
+                      {pay.utr ? (
+                        <code>{pay.utr}</code>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {pay.acknowledgement_status === "submitted" ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            color: "var(--success)",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                        >
                           <CheckCircle size={12} /> ACKNOWLEDGED
                         </div>
                       ) : (
-                        <span className="badge-modern badge-warning" style={{ fontSize: '10px' }}>PENDING</span>
+                        <span
+                          className="badge-modern badge-warning"
+                          style={{ fontSize: "10px" }}
+                        >
+                          PENDING
+                        </span>
                       )}
                     </td>
                   </tr>

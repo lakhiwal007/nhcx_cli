@@ -17,21 +17,22 @@ export default function PayerPolicy({ ctx }) {
   const [loadingPolicies, setLoadingPolicies] = useState(false);
   const [selectedPolicy, setSelectedPolicy] = useState(caseState.policy || null);
 
-  useEffect(() => {
-    const fetchPayers = async () => {
-      setLoadingPayers(true);
-      try {
-        const res = await api.searchPayers({ name: payerSearch });
-        setPayers(res);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingPayers(false);
-      }
-    };
-    const timer = setTimeout(fetchPayers, 400);
-    return () => clearTimeout(timer);
-  }, [payerSearch]);
+  const handlePayerSearchClick = async () => {
+    if (!payerSearch.trim()) {
+      setPayers([]);
+      return;
+    }
+    setLoadingPayers(true);
+    try {
+      const res = await api.searchPayers({ name: payerSearch });
+      setPayers(res || []);
+    } catch (err) {
+      console.error(err);
+      setPayers([]);
+    } finally {
+      setLoadingPayers(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedPayer || !patient) return;
@@ -74,12 +75,18 @@ export default function PayerPolicy({ ctx }) {
       <div className="grid-1-to-2" style={{ gap: "24px" }}>
         {/* Payer Selection */}
         <Card title="1. Select Payer">
-          <Input
-            icon={Search}
-            placeholder="Search by payer name..."
-            value={payerSearch}
-            onChange={(e) => setPayerSearch(e.target.value)}
-          />
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <Input
+                icon={Search}
+                placeholder="Search by payer name..."
+                value={payerSearch}
+                onChange={(e) => setPayerSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handlePayerSearchClick(); }}
+              />
+            </div>
+            <Button variant="primary" onClick={handlePayerSearchClick}>Search</Button>
+          </div>
           <div style={{ marginTop: "16px", maxHeight: "400px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "12px" }}>
             {loadingPayers ? (
               <div className="spinner" />
@@ -109,43 +116,41 @@ export default function PayerPolicy({ ctx }) {
         </Card>
 
         {/* Policy Selection */}
-        <Card title="2. Select Policy">
-          {!selectedPayer ? (
-            <div className="text-center py-10 text-muted">
-              Select a payer first to fetch associated policies.
-            </div>
-          ) : loadingPolicies ? (
-            <div className="flex-center py-10 flex-col"><div className="spinner mb-4" /><p className="text-muted">Fetching policies...</p></div>
-          ) : policies.length === 0 ? (
-            <div className="text-center py-10 text-muted">
-              No policies found for this patient under {selectedPayer.name}.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {policies.map(policy => (
-                <div 
-                  key={policy.policy_number}
-                  onClick={() => handlePolicySelect(policy)}
-                  style={{
-                    padding: "16px", border: `1.5px solid ${selectedPolicy?.policy_number === policy.policy_number ? "var(--primary)" : "var(--border-color)"}`,
-                    borderRadius: "12px", background: selectedPolicy?.policy_number === policy.policy_number ? "var(--primary-light)" : "var(--bg-main)",
-                    cursor: "pointer", display: "flex", gap: "16px"
-                  }}
-                >
-                  <FileText size={24} color={selectedPolicy?.policy_number === policy.policy_number ? "var(--primary)" : "var(--text-muted)"} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "4px" }}>{policy.product_name}</div>
-                    <code style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>{policy.policy_number}</code>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
-                      <span>Sum Insured: <strong style={{ color: "var(--primary)" }}>{policy.currency} {policy.sum_insured?.toLocaleString()}</strong></span>
-                      <StatusBadge status={policy.status} />
+        {selectedPayer && (
+          <Card title="2. Select Policy">
+            {loadingPolicies ? (
+              <div className="flex-center py-10 flex-col"><div className="spinner mb-4" /><p className="text-muted">Fetching policies...</p></div>
+            ) : policies.length === 0 ? (
+              <div className="text-center py-10 text-muted">
+                No policies found for this patient under {selectedPayer.name}.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {policies.map(policy => (
+                  <div 
+                    key={policy.policy_number}
+                    onClick={() => handlePolicySelect(policy)}
+                    style={{
+                      padding: "16px", border: `1.5px solid ${selectedPolicy?.policy_number === policy.policy_number ? "var(--primary)" : "var(--border-color)"}`,
+                      borderRadius: "12px", background: selectedPolicy?.policy_number === policy.policy_number ? "var(--primary-light)" : "var(--bg-main)",
+                      cursor: "pointer", display: "flex", gap: "16px"
+                    }}
+                  >
+                    <FileText size={24} color={selectedPolicy?.policy_number === policy.policy_number ? "var(--primary)" : "var(--text-muted)"} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "4px" }}>{policy.product_name}</div>
+                      <code style={{ fontSize: "11px", color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>{policy.policy_number}</code>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
+                        <span>Sum Insured: <strong style={{ color: "var(--primary)" }}>{policy.currency} {policy.sum_insured?.toLocaleString()}</strong></span>
+                        <StatusBadge status={policy.status} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
       </div>
 
       {/* Navigation Footer */}

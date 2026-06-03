@@ -6,14 +6,16 @@
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 // Base URL for real network calls. Change this to match your backend server.
-const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:8000/api/v1/insurance";
+const BASE_URL =
+  import.meta.env.VITE_BASE_URL ||
+  "http://localhost:5173/nhcx/backend/api/v1/insurance";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Build a full URL with query params from an object (undefined values are skipped). */
 const buildUrl = (path, params = {}) => {
-  const url = new URL(BASE_URL + path);
+  const url = new URL(BASE_URL + path, window.location.origin);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== "")
       url.searchParams.append(k, v);
@@ -28,10 +30,13 @@ const http = {
       const res = await fetch(buildUrl(path, params), {
         headers: { "Content-Type": "application/json" },
       });
-      if (!res.ok) throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+      if (!res.ok)
+        throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(new CustomEvent("api-error", { detail: err.message }));
+      window.dispatchEvent(
+        new CustomEvent("api-error", { detail: err.message }),
+      );
       throw err;
     }
   },
@@ -42,10 +47,13 @@ const http = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
+      if (!res.ok)
+        throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(new CustomEvent("api-error", { detail: err.message }));
+      window.dispatchEvent(
+        new CustomEvent("api-error", { detail: err.message }),
+      );
       throw err;
     }
   },
@@ -56,10 +64,15 @@ const http = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status} ${res.statusText}`);
+      if (!res.ok)
+        throw new Error(
+          `PATCH ${path} failed: ${res.status} ${res.statusText}`,
+        );
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(new CustomEvent("api-error", { detail: err.message }));
+      window.dispatchEvent(
+        new CustomEvent("api-error", { detail: err.message }),
+      );
       throw err;
     }
   },
@@ -584,7 +597,7 @@ const mock = {
     return {
       claim_id: params.claim_id || 101,
       preauth_ref: "PA-2026-00001",
-      missing_fields: []
+      missing_fields: [],
     };
   },
 
@@ -780,7 +793,7 @@ const mock = {
     return {
       status: "success",
       message: "Patient context updated",
-      missing_fields: []
+      missing_fields: [],
     };
   },
 

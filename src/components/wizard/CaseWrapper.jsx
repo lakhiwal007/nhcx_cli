@@ -60,8 +60,6 @@ export default function CaseWrapper() {
           // If the child has a latest claim, maybe load it.
           if (child.latest_claim) {
              setCashlessCase(child.latest_claim);
-             // Hydrate state if needed
-             setCaseState(prev => ({ ...prev, payer: { participant_code: child.latest_claim.payer_code } }));
           }
         }
       } catch (err) {

@@ -1,7 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap");
 
 :root {
-    /* Colors - Modern Indigo & Slate Palette */
     --primary: #4f46e5;
     --primary-hover: #4338ca;
     --primary-light: #eef2ff;
@@ -573,6 +572,24 @@ h3,
     border-color: var(--primary);
     color: var(--primary);
     background: var(--primary-light);
+}
+
+.btn-modern:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-primary-modern:disabled {
+    background: var(--border-hover);
+    color: var(--text-muted);
+}
+
+.btn-outline-modern:disabled {
+    border-color: var(--border-color);
+    color: var(--text-muted);
+    background: var(--bg-main);
 }
 
 /* Input */

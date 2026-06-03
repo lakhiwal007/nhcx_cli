@@ -10,6 +10,7 @@ export default function PatientProfile() {
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   
   // Extra data for selected patient
@@ -21,6 +22,7 @@ export default function PatientProfile() {
 
   const fetchChildren = useCallback(async (name = "") => {
     setLoading(true);
+    setHasSearched(true);
     try {
       const response = await api.searchChildren({ name });
       setChildren(response?.children || []);
@@ -31,12 +33,14 @@ export default function PatientProfile() {
     }
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchChildren(searchQuery);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery, fetchChildren]);
+  const handleSearchClick = () => {
+    if (!searchQuery.trim()) {
+      setChildren([]);
+      setHasSearched(false);
+      return;
+    }
+    fetchChildren(searchQuery);
+  };
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -78,18 +82,25 @@ export default function PatientProfile() {
         <p className="text-muted" style={{ fontSize: '15px', marginBottom: '8px', textAlign: 'center' }}>Search for a pediatric patient to view their 360° profile or start a new cashless case.</p>
         
         <div style={{ width: '100%', position: 'relative' }}>
-          <Input
-            icon={Search}
-            placeholder="Search by patient name or ID..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (selectedPatient) setSelectedPatient(null);
-            }}
-          />
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <Input
+                icon={Search}
+                placeholder="Search by patient name or ID..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setHasSearched(false);
+                  if (selectedPatient) setSelectedPatient(null);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearchClick(); }}
+              />
+            </div>
+            <Button variant="primary" onClick={handleSearchClick}>Search</Button>
+          </div>
           
           {/* Dropdown Results */}
-          {searchQuery && !selectedPatient && (
+          {hasSearched && !selectedPatient && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', marginTop: '8px', zIndex: 10, boxShadow: 'var(--shadow-lg)', maxHeight: '400px', overflowY: 'auto' }}>
               {loading ? (
                 <div className="flex-center py-6"><div className="spinner" /></div>

@@ -93,6 +93,7 @@ export const Input = ({
   label,
   value,
   onChange,
+  onKeyDown,
   placeholder,
   type = "text",
   name,
@@ -120,6 +121,7 @@ export const Input = ({
         name={name}
         value={value}
         onChange={onChange}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
       />
     </div>
