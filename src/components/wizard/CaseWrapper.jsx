@@ -141,8 +141,8 @@ export default function CaseWrapper() {
               {effectiveCase.payer_code && (
                 <span><Building2 size={12} style={{ display: "inline", marginRight: "4px" }} />{effectiveCase.payer_code}</span>
               )}
-              {(caseState.policy?.policy_number || effectiveCase.policy_number) && (
-                <span><FileText size={12} style={{ display: "inline", marginRight: "4px" }} />{caseState.policy?.policy_number || effectiveCase.policy_number}</span>
+              {(caseState.policy?.policyNumber || caseState.policy?.policy_number || effectiveCase.policy_number) && (
+                <span><FileText size={12} style={{ display: "inline", marginRight: "4px" }} />{caseState.policy?.policyNumber || caseState.policy?.policy_number || effectiveCase.policy_number}</span>
               )}
               {preauthRef && (
                 <span><Hash size={12} style={{ display: "inline", marginRight: "4px" }} />Preauth: {preauthRef}</span>
@@ -166,7 +166,7 @@ export default function CaseWrapper() {
           return (
             <div
               key={step.id}
-              onClick={() => isPast && navigate(step.path)}
+              onClick={() => isPast && navigate(`/case/${id}/${step.path}`)}
               style={{
                 padding: "8px 14px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "6px",
                 background: isActive ? "var(--primary)" : isPast ? "rgba(16,185,129,0.1)" : "var(--bg-main)",

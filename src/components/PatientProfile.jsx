@@ -141,8 +141,66 @@ function PatientDetail({ patient, onBack }) {
   const startWorkflow = (visit) =>
     navigate(`/case/${patient.child_id}/payer`, { state: { admission_id: visit?.admission_no } });
 
-  const resumeCase = (claim) =>
-    navigate(`/case/${patient.child_id}/`);
+  const resumeCase = async (claimSummary) => {
+    if (!claimSummary) {
+      navigate(`/case/${patient.child_id}/payer`);
+      return;
+    }
+    
+    try {
+      const fullCase = await api.getCashlessStatus(claimSummary.cashless_case_id);
+      const pendingTasks = fullCase.pending_tasks || [];
+      if (pendingTasks.length > 0) {
+        navigate(`/work-queue?task_id=${pendingTasks[0].id}`);
+        return;
+      }
+
+      const {
+        status,
+        next_actions,
+        policy_number,
+        payer_code,
+        payment_reference,
+        payment_status,
+        claim_decision,
+        claim_correlation_id,
+        preauth_decision,
+        preauth_correlation_id,
+      } = fullCase;
+
+      const pDecision = preauth_decision || claimSummary.preauth_status;
+      const cDecision = claim_decision || claimSummary.claim_status;
+
+      let dest = "payer";
+
+      if (payment_reference && payment_status === "failed") {
+        dest = "payment";
+      } else if (cDecision === "APPROVED" || cDecision === "PARTIALLY_APPROVED") {
+        dest = "payment";
+      } else if (claim_correlation_id && !cDecision) {
+        dest = "claim";
+      } else if (pDecision === "APPROVED" || pDecision === "PARTIALLY_APPROVED") {
+        dest = "claim";
+      } else if (pDecision === "QUERIED" || pDecision === "REJECTED") {
+        dest = "status";
+      } else if (preauth_correlation_id && (!pDecision || pDecision === "pending")) {
+        dest = "status";
+      } else if (next_actions?.includes("prepare_preauth") || next_actions?.includes("submit_preauth")) {
+        dest = "review";
+      } else if (status === "pending" || status === "partial" || next_actions?.includes("refresh")) {
+        dest = "prep";
+      } else if (policy_number) {
+        dest = "prep";
+      } else if (payer_code) {
+        dest = "payer";
+      }
+
+      navigate(`/case/${patient.child_id}/${dest}`);
+    } catch (err) {
+      console.error(err);
+      navigate(`/case/${patient.child_id}/payer`);
+    }
+  };
 
   return (
     <motion.div

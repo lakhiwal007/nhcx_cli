@@ -122,15 +122,16 @@ export default function PreauthStatus({ ctx }) {
         const res = await api.getPreauthStatus(correlationId);
         setStatusData(res);
         if (res.preauth_ref) updateCaseState({ preauthRef: res.preauth_ref, preauthDecision: res.decision });
+        if (res.claim_id && !caseState.claim_id) updateCaseState({ claim_id: res.claim_id });
+        if (res.cashless_case_id && !caseState.cashless_case_id) updateCaseState({ cashless_case_id: res.cashless_case_id });
         if (res.status === "complete" || res.status === "not_found") {
           setPolling(false);
+          clearInterval(pollRef.current);
         }
       } catch (_) {}
     };
     doPoll();
-    if (polling) {
-      pollRef.current = setInterval(doPoll, POLL_INTERVAL_MS);
-    }
+    pollRef.current = setInterval(doPoll, POLL_INTERVAL_MS);
     return () => clearInterval(pollRef.current);
   }, []);
 
@@ -156,6 +157,8 @@ export default function PreauthStatus({ ctx }) {
       try {
         const res = await api.getPreauthStatus(newCorrelationId);
         setStatusData(res);
+        if (res.claim_id && !caseState.claim_id) updateCaseState({ claim_id: res.claim_id });
+        if (res.cashless_case_id && !caseState.cashless_case_id) updateCaseState({ cashless_case_id: res.cashless_case_id });
         if (res.status === "complete" || res.status === "not_found") {
           setPolling(false);
           clearInterval(pollRef.current);
@@ -304,43 +307,119 @@ export default function PreauthStatus({ ctx }) {
         </div>
       )}
 
+          {/* Totals summary */}
       {isComplete && (
         <>
           <DecisionBanner
             decision={decision}
-            approvedAmount={statusData?.totals?.benefit?.value}
+            approvedAmount={statusData?.totals?.eligible?.value}
             message={statusData?.process_notes?.[0]?.text}
           />
 
-          <Card title="Adjudication Breakdown" className="mb-6">
-            <AmountGrid totals={statusData?.totals} />
-            {statusData?.items?.length > 0 && (
-              <div className="table-responsive-wrapper mt-4">
+          <Card title="Adjudication Summary" className="mb-6">
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: statusData?.items?.length > 0 ? "16px" : 0 }}>
+              {[
+                { label: "Eligible Amount", value: statusData?.totals?.eligible?.value, currency: statusData?.totals?.eligible?.currency, color: "var(--success)" },
+                { label: "Benefit", value: statusData?.totals?.benefit?.value, currency: statusData?.totals?.benefit?.currency, color: "var(--primary)" },
+                { label: "Copay", value: statusData?.totals?.copay?.value, currency: statusData?.totals?.copay?.currency, color: "var(--error)" },
+                { label: "Submitted", value: statusData?.totals?.submitted?.value, currency: statusData?.totals?.submitted?.currency, color: "var(--text-main)" },
+              ].filter(t => t.value != null).map((t, i) => (
+                <div key={i} style={{ flex: "1 1 120px", padding: "12px 16px", background: "var(--bg-main)", borderRadius: "10px", textAlign: "center" }}>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "4px" }}>{t.label}</div>
+                  <div style={{ fontSize: "20px", fontWeight: 800, color: t.color }}>
+                    {t.currency === "INR" ? "₹" : (t.currency || "")}{t.value?.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+              {/* If all totals are null, fallback AmountGrid */}
+              {!statusData?.totals?.eligible?.value && !statusData?.totals?.benefit?.value && (
+                <AmountGrid totals={statusData?.totals} />
+              )}
+            </div>
+
+            {/* Claim Items table */}
+            {(statusData?.claim_items?.length > 0 || statusData?.items?.length > 0) && (
+              <div className="table-responsive-wrapper">
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>Claim Items</div>
                 <table className="table-modern" style={{ fontSize: "13px" }}>
                   <thead>
                     <tr>
-                      <th>Line Item</th>
-                      <th style={{ textAlign: "right" }}>Submitted</th>
+                      <th>#</th>
+                      <th>Service</th>
+                      <th>Category</th>
+                      <th style={{ textAlign: "right" }}>Qty</th>
+                      <th style={{ textAlign: "right" }}>Unit Price</th>
+                      <th style={{ textAlign: "right" }}>Net Amount</th>
                       <th style={{ textAlign: "right" }}>Eligible</th>
-                      <th style={{ textAlign: "right" }}>Copay</th>
-                      <th style={{ textAlign: "right" }}>Benefit</th>
+                      <th>Decision</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {statusData.items.map((item, i) => (
-                      <tr key={i}>
-                        <td>Seq #{item.sequence}</td>
-                        <td style={{ textAlign: "right" }}>₹{item.adjudication?.submitted?.value?.toLocaleString()}</td>
-                        <td style={{ textAlign: "right" }}>₹{item.adjudication?.eligible?.value?.toLocaleString()}</td>
-                        <td style={{ textAlign: "right", color: "var(--error)" }}>₹{item.adjudication?.copay?.value?.toLocaleString()}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: "var(--success)" }}>₹{item.adjudication?.benefit?.value?.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {(statusData?.claim_items?.length > 0 ? statusData.claim_items : statusData.items).map((item, i) => {
+                      const adj = item.adjudication;
+                      const claimItem = statusData?.claim_items?.[i];
+                      return (
+                        <tr key={i}>
+                          <td style={{ color: "var(--text-muted)" }}>{item.sequence ?? i + 1}</td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{claimItem?.service_name || `Seq #${item.sequence}`}</div>
+                            {claimItem?.service_code && <code style={{ fontSize: "11px", color: "var(--text-muted)" }}>{claimItem.service_code}</code>}
+                          </td>
+                          <td>{claimItem?.category ? <span className="badge-modern badge-info" style={{ fontSize: "10px" }}>{claimItem.category}</span> : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{claimItem?.quantity ?? "—"}</td>
+                          <td style={{ textAlign: "right" }}>{claimItem?.unit_price != null ? `₹${claimItem.unit_price.toLocaleString()}` : "—"}</td>
+                          <td style={{ textAlign: "right", fontWeight: 600 }}>{claimItem?.net_amount != null ? `₹${claimItem.net_amount.toLocaleString()}` : "—"}</td>
+                          <td style={{ textAlign: "right", color: "var(--success)", fontWeight: 700 }}>
+                            {adj?.eligible?.value != null ? `₹${adj.eligible.value.toLocaleString()}` : "—"}
+                          </td>
+                          <td>
+                            {adj?.eligible?.reason ? (
+                              <span className="badge-modern badge-success" style={{ fontSize: "10px" }}>{adj.eligible.reason}</span>
+                            ) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </Card>
+
+          {/* Procedures + Diagnoses side by side */}
+          {(statusData?.procedures?.length > 0 || statusData?.diagnoses?.length > 0) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+              {statusData?.procedures?.length > 0 && (
+                <Card title="Procedures">
+                  {statusData.procedures.map((p, i) => (
+                    <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color)", fontSize: "13px" }}>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        {p.date && new Date(p.date).toLocaleDateString()}
+                        {p.code && <> · <code>{p.code}</code></>}
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+              {statusData?.diagnoses?.length > 0 && (
+                <Card title="Diagnoses">
+                  {statusData.diagnoses.map((d, i) => (
+                    <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color)", fontSize: "13px", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>{d.name}</div>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                          <code>{d.code}</code>
+                          {d.primary && <span className="badge-modern badge-info" style={{ fontSize: "10px", marginLeft: "6px" }}>Primary</span>}
+                          {d.on_admission && <span className="badge-modern badge-success" style={{ fontSize: "10px", marginLeft: "4px" }}>On Admission</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
 
           {statusData?.errors?.length > 0 && (
             <Card className="mb-6">
@@ -352,6 +431,7 @@ export default function PreauthStatus({ ctx }) {
               ))}
             </Card>
           )}
+
 
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
             <Button variant="outline" onClick={() => navigate("/")}>Save & Close</Button>
@@ -389,7 +469,7 @@ export default function PreauthStatus({ ctx }) {
               <Button
                 variant="primary"
                 disabled={!isApproved && !isPartial}
-                onClick={() => navigate("../claim")}
+                onClick={() => navigate("../claim", { state: { claim_id: statusData?.claim_id || caseState.claim_id } })}
               >
                 Proceed to Claim <ArrowRight size={18} style={{ marginLeft: "8px" }} />
               </Button>

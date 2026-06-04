@@ -11,7 +11,7 @@ export default defineConfig({
       "disclose-heaving-disloyal.ngrok-free.dev",
     ],
     proxy: {
-      "/nhcx/api": {
+      "/nhcx/backend/api": {
         target: "https://disclose-heaving-disloyal.ngrok-free.dev",
         changeOrigin: true,
         secure: false,

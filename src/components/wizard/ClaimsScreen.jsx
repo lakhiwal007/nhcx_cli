@@ -107,14 +107,20 @@ export default function ClaimsScreen({ ctx }) {
   const [showContextDrawer, setShowContextDrawer] = useState(false);
   const [queryAnswer, setQueryAnswer] = useState("");
 
+  // caseState.claim_id may be null (set from cashless prepare), so always prefer location.state if caseState has null
   const claimId = caseState.claim_id || location.state?.claim_id;
 
-  const loadDraft = async (id) => {
+  const loadDraft = async (id, params) => {
     setLoading(true);
     try {
-      const res = await api.prepareClaimDraft({ claim_id: id || claimId });
+      const queryParams = params || (id || claimId ? { claim_id: id || claimId } : {});
+      const res = await api.prepareClaimDraft(queryParams);
       setClaimDraft(res);
       setMissingFields(res.missing_fields ?? []);
+      // Persist claim_id if backend returns one and we don't already have a valid one
+      if (res.claim_id && !claimId) {
+        updateCaseState({ claim_id: res.claim_id });
+      }
     } catch (_) {
     } finally {
       setLoading(false);
@@ -126,7 +132,21 @@ export default function ClaimsScreen({ ctx }) {
       setActiveTab("decision");
       setPolling(true);
     } else {
-      loadDraft();
+      const resolvedClaimId = caseState.claim_id || location.state?.claim_id;
+      const resolvedCashlessCaseId = caseState.cashless_case_id;
+
+      if (!resolvedClaimId && !resolvedCashlessCaseId) {
+        // Show a no-claim-id error state rather than making a broken API call
+        setLoading(false);
+        setClaimDraft({ _error: "No claim ID available. Please complete the preauth step first." });
+        return;
+      }
+
+      const params = {};
+      if (resolvedClaimId) params.claim_id = resolvedClaimId;
+      else if (resolvedCashlessCaseId) params.cashless_case_id = resolvedCashlessCaseId;
+
+      loadDraft(null, params);
     }
   }, []);
 
@@ -251,6 +271,23 @@ export default function ClaimsScreen({ ctx }) {
         <div className="spinner mb-4" />
         <p className="text-muted">Building claim draft…</p>
       </div>
+    );
+  }
+
+  if (claimDraft?._error) {
+    return (
+      <Card>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", padding: "8px 0" }}>
+          <AlertCircle size={22} color="var(--error)" />
+          <div>
+            <div style={{ fontWeight: 700, color: "var(--error)", marginBottom: "4px" }}>Cannot load claim</div>
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{claimDraft._error}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          <Button variant="outline" onClick={() => navigate("../status")}>← Back to Preauth Status</Button>
+        </div>
+      </Card>
     );
   }
 
