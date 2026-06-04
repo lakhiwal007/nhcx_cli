@@ -1,56 +1,81 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Send, ArrowRight } from "lucide-react";
 import { api } from "../../api";
-import { Card, Button, Input, DecisionBanner } from "../Common";
+import { Card, Button, DecisionBanner, DocumentChecklist } from "../Common";
+
+const POLL_INTERVAL_MS = 7000;
+const REASON_CODES = [
+  { value: "claimrejected", label: "Claim Rejected" },
+  { value: "partialpayment", label: "Partial Payment Dispute" },
+  { value: "rejectiondisputed", label: "Rejection Disputed" },
+  { value: "improvedoc", label: "Submitting Additional Documents" },
+  { value: "clinicaleva", label: "Disputing Clinical Evaluation" },
+  { value: "pricingquery", label: "Pricing Disagreement" },
+  { value: "adminappeal", label: "Administrative Appeal" },
+  { value: "other", label: "Other" },
+];
 
 export default function ReprocessScreen({ ctx }) {
   const navigate = useNavigate();
   const { caseState } = ctx;
-  
+
+  const claimId = caseState.claim_id || caseState.draftData?.claim_id;
+
+  const [reasonCode, setReasonCode] = useState("other");
+  const [description, setDescription] = useState("");
+  const [supportingDocs, setSupportingDocs] = useState([
+    { category: "attachment", name: "Justification / Supporting Document", code: "ATTACHMENT", url: null },
+  ]);
   const [submitting, setSubmitting] = useState(false);
-  const [reprocessReason, setReprocessReason] = useState("");
-  const [uploaded, setUploaded] = useState(false);
-  
+  const [reprocessCorrelationId, setReprocessCorrelationId] = useState(null);
   const [status, setStatus] = useState(null);
   const [polling, setPolling] = useState(false);
+  const pollRef = useRef(null);
 
   useEffect(() => {
-    let intervalId;
-    if (polling && caseState.claimResponse?.correlation_id) {
-      const pollStatus = async () => {
-        try {
-          const res = await api.getReprocessStatus(caseState.claimResponse.correlation_id);
-          setStatus(res);
-          if (res.status === "complete" || res.status === "failed") {
-            setPolling(false);
-            clearInterval(intervalId);
-          }
-        } catch (err) {
-          console.error(err);
-          setPolling(false);
-          clearInterval(intervalId);
-        }
-      };
-      pollStatus();
-      intervalId = setInterval(pollStatus, 3000);
+    if (!polling || !reprocessCorrelationId) {
+      clearInterval(pollRef.current);
+      return;
     }
-    return () => { if (intervalId) clearInterval(intervalId); };
-  }, [polling, caseState.claimResponse]);
+    const doPoll = async () => {
+      try {
+        const res = await api.getReprocessStatus(reprocessCorrelationId);
+        setStatus(res);
+        if (res.status === "complete" || res.status === "not_found") {
+          setPolling(false);
+          clearInterval(pollRef.current);
+        }
+      } catch (_) {}
+    };
+    doPoll();
+    pollRef.current = setInterval(doPoll, POLL_INTERVAL_MS);
+    return () => clearInterval(pollRef.current);
+  }, [polling, reprocessCorrelationId]);
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await api.submitReprocess({
-        claim_id: caseState.claimResponse?.claim_id || Date.now(),
-        reason: reprocessReason
+      const res = await api.submitReprocess({
+        claim_id: claimId,
+        reason_code: reasonCode,
+        description,
+        supporting_documents: supportingDocs.filter((d) => d.url),
       });
+      setReprocessCorrelationId(res.correlation_id);
       setPolling(true);
-    } catch (err) {
-      console.error(err);
+    } catch (_) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleUpload = (doc) => {
+    setSupportingDocs((prev) =>
+      prev.map((d) =>
+        d.code === doc.code ? { ...d, url: "https://hospital.example/mock/doc.pdf" } : d
+      )
+    );
   };
 
   if (polling || status) {
@@ -63,17 +88,15 @@ export default function ReprocessScreen({ ctx }) {
               <div className="spinner" style={{ width: "24px", height: "24px" }} />
               <div>
                 <div style={{ fontWeight: 700 }}>Appeal in Progress</div>
-                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Awaiting payer response to appeal...</div>
+                <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                  {reprocessCorrelationId} · polling every {POLL_INTERVAL_MS / 1000}s
+                </div>
               </div>
             </div>
           </Card>
         ) : (
           <>
-            <DecisionBanner 
-              decision={status?.decision} 
-              message={status?.process_notes?.[0]?.text}
-            />
-            
+            <DecisionBanner decision={status?.decision} message={status?.claim_response?.errors?.[0]?.detail || status?.process_notes?.[0]?.text} />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
               <Button variant="outline" onClick={() => navigate("/")}>Save & Close</Button>
               <Button variant="primary" onClick={() => navigate("../payment")}>
@@ -91,48 +114,53 @@ export default function ReprocessScreen({ ctx }) {
       <div className="grid-1-to-2" style={{ gap: "24px" }}>
         <Card title="File an Appeal (Reprocess)">
           <p className="text-muted" style={{ fontSize: "14px", marginBottom: "20px" }}>
-            If the claim was partially approved or rejected and you have additional justification or missing documents, you can request a reprocessing of the claim.
+            Use this when the claim was partially approved or rejected and you have additional justification or missing documents to submit.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div>
-              <label className="input-label-modern">Reason for Appeal</label>
-              <textarea 
+              <label className="input-label-modern">Reason Code</label>
+              <select
+                className="input-modern"
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+              >
+                {REASON_CODES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="input-label-modern">Description</label>
+              <textarea
                 className="input-modern"
                 style={{ height: "100px", resize: "vertical" }}
-                placeholder="Explain why the claim should be re-evaluated..."
-                value={reprocessReason}
-                onChange={(e) => setReprocessReason(e.target.value)}
+                placeholder="Explain why the claim should be re-evaluated…"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
           </div>
         </Card>
-        
+
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <Card title="Supporting Evidence">
             <div className="warning-banner mb-4" style={{ background: "rgba(245,158,11,0.1)", color: "var(--warning)" }}>
-              Ensure you upload any documents requested in the payer's rejection notes.
+              Attach any documents referenced in the payer's rejection notes.
             </div>
-            <div className="doc-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
-              <span style={{ fontSize: "14px", fontWeight: 600 }}>Justification Letter</span>
-              {uploaded ? (
-                <span className="badge-modern badge-success" style={{ fontSize: '10px' }}>Attached</span>
-              ) : (
-                <Button variant="outline" size="small" onClick={() => setUploaded(true)}>Upload</Button>
-              )}
-            </div>
+            <DocumentChecklist documents={supportingDocs} onUpload={handleUpload} />
           </Card>
 
           <Card>
-            <Button 
-              variant="primary" 
-              className="w-full" 
+            <Button
+              variant="primary"
+              className="w-full"
               icon={Send}
-              disabled={!reprocessReason || submitting}
+              disabled={!description || submitting}
               onClick={handleSubmit}
               style={{ justifyContent: "center" }}
             >
-              {submitting ? "Submitting..." : "Submit Appeal"}
+              {submitting ? "Submitting…" : "Submit Appeal"}
             </Button>
           </Card>
         </div>
@@ -140,7 +168,9 @@ export default function ReprocessScreen({ ctx }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
         <Button variant="text" onClick={() => navigate("../claim")}>← Back to Claim</Button>
-        <Button variant="outline" onClick={() => navigate("../payment")}>Skip to Payment <ArrowRight size={18} style={{ marginLeft: "8px" }} /></Button>
+        <Button variant="outline" onClick={() => navigate("../payment")}>
+          Skip to Payment <ArrowRight size={18} style={{ marginLeft: "8px" }} />
+        </Button>
       </div>
     </div>
   );

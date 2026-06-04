@@ -1,89 +1,174 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Send, FileText, CheckCircle2, ArrowRight } from "lucide-react";
+import { Send, ArrowRight, AlertCircle, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../api";
-import { Card, Button, DocumentChecklist, DecisionBanner, AmountGrid } from "../Common";
+import { Card, Button, DocumentChecklist, DecisionBanner, AmountGrid, MissingFieldsAlert } from "../Common";
+
+const POLL_INTERVAL_MS = 7000;
+const PATIENT_CONTEXT_FIELDS = [
+  { key: "abha", label: "ABHA Number", placeholder: "91-XXXX-XXXX-XXXX" },
+  { key: "member_id", label: "Member / PMJAY ID", placeholder: "PMJAY-MEM-XXXXX" },
+  { key: "dob", label: "Date of Birth", type: "date" },
+  { key: "admission_date", label: "Admission Date", type: "date" },
+  { key: "discharge_date", label: "Discharge Date", type: "date" },
+];
+
+function Drawer({ open, onClose, title, children }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)", zIndex: 90 }}
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 26, stiffness: 300 }}
+            style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "min(520px, 95vw)", background: "var(--bg-card)", borderLeft: "1px solid var(--border-color)", zIndex: 91, display: "flex", flexDirection: "column" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: "1px solid var(--border-color)" }}>
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800 }}>{title}</h3>
+              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}>
+                <X size={22} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+              {children}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function PatientContextForm({ claimId, onResolved }) {
+  const [values, setValues] = useState({});
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await api.patchPatientContext(claimId, { patient_context: values });
+      onResolved(res.missing_fields ?? []);
+    } catch (_) {
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      {PATIENT_CONTEXT_FIELDS.map((f) => (
+        <div key={f.key}>
+          <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>{f.label}</label>
+          <input
+            className="input-modern"
+            type={f.type || "text"}
+            placeholder={f.placeholder}
+            value={values[f.key] || ""}
+            onChange={(e) => setValues((p) => ({ ...p, [f.key]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <Button variant="primary" size="small" disabled={saving} onClick={handleSave}>
+        {saving ? "Saving…" : "Save & Refresh"}
+      </Button>
+    </div>
+  );
+}
 
 export default function ClaimsScreen({ ctx }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { caseState, updateCaseState } = ctx;
-  
+
   const [loading, setLoading] = useState(true);
   const [claimDraft, setClaimDraft] = useState(null);
+  const [missingFields, setMissingFields] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState(location.state?.tab || "draft"); // 'draft', 'discharge', 'final', 'decision'
-  
-  // Status after submission
+  const [activeTab, setActiveTab] = useState(location.state?.tab || "draft");
+
+  const [dischargeCorrelationId, setDischargeCorrelationId] = useState(null);
+  const [finalCorrelationId, setFinalCorrelationId] = useState(
+    caseState.claimCorrelationId || null
+  );
   const [claimStatus, setClaimStatus] = useState(null);
   const [polling, setPolling] = useState(false);
+  const pollRef = useRef(null);
 
-  const tabs = [
-    { id: "draft", label: "Claim Draft" },
-    { id: "discharge", label: "Discharge Claim" },
-    { id: "final", label: "Final Claim" },
-    { id: "decision", label: "Claim Decision" }
-  ];
+  const [showQueryDrawer, setShowQueryDrawer] = useState(false);
+  const [showResubmitDrawer, setShowResubmitDrawer] = useState(false);
+  const [showContextDrawer, setShowContextDrawer] = useState(false);
+  const [queryAnswer, setQueryAnswer] = useState("");
+
+  const claimId = caseState.claim_id || location.state?.claim_id;
+
+  const loadDraft = async (id) => {
+    setLoading(true);
+    try {
+      const res = await api.prepareClaimDraft({ claim_id: id || claimId });
+      setClaimDraft(res);
+      setMissingFields(res.missing_fields ?? []);
+    } catch (_) {
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadDraft = async () => {
-      setLoading(true);
-      try {
-        const claimId = location.state?.claim_id || caseState.draftData?.claim_id || Date.now();
-        const res = await api.prepareClaimDraft({
-          claim_id: claimId
-        });
-        setClaimDraft(res);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (!caseState.claimResponse) {
-      loadDraft();
-    } else {
-      setLoading(false);
+    if (finalCorrelationId) {
       setActiveTab("decision");
       setPolling(true);
+    } else {
+      loadDraft();
     }
-  }, [caseState.claimResponse, caseState.draftData]);
+  }, []);
 
   useEffect(() => {
-    let intervalId;
-    if (polling && caseState.claimResponse?.correlation_id) {
-      const pollStatus = async () => {
-        try {
-          const res = await api.getClaimStatus(caseState.claimResponse.correlation_id);
-          setClaimStatus(res);
-          if (res.status === "complete" || res.status === "failed") {
-            setPolling(false);
-            clearInterval(intervalId);
-          }
-        } catch (err) {
-          console.error(err);
-          setPolling(false);
-          clearInterval(intervalId);
-        }
-      };
-      pollStatus();
-      intervalId = setInterval(pollStatus, 3000);
+    if (!polling || !finalCorrelationId) {
+      clearInterval(pollRef.current);
+      return;
     }
-    return () => { if (intervalId) clearInterval(intervalId); };
-  }, [polling, caseState.claimResponse]);
+    const doPoll = async () => {
+      try {
+        const res = await api.getClaimStatus(finalCorrelationId);
+        setClaimStatus(res);
+        if (res.status === "complete" || res.status === "not_found") {
+          setPolling(false);
+          clearInterval(pollRef.current);
+        }
+      } catch (_) {}
+    };
+    doPoll();
+    pollRef.current = setInterval(doPoll, POLL_INTERVAL_MS);
+    return () => clearInterval(pollRef.current);
+  }, [polling, finalCorrelationId]);
+
+  const handleUpload = (doc) => {
+    setClaimDraft((prev) => ({
+      ...prev,
+      supporting_documents: prev.supporting_documents.map((d) =>
+        d.code === doc.code ? { ...d, url: "https://hospital.example/mock/doc.pdf" } : d
+      ),
+    }));
+  };
 
   const handleSubmitDischarge = async () => {
     setSubmitting(true);
     try {
       const res = await api.submitDischargeClaim({
         claim_id: claimDraft.claim_id,
-        supporting_documents: claimDraft.supporting_documents
+        supporting_documents: claimDraft.supporting_documents,
       });
-      // Just moving to the next tab for UI flow
+      setDischargeCorrelationId(res.correlation_id);
       setActiveTab("final");
-    } catch (err) {
-      console.error(err);
+    } catch (_) {
     } finally {
       setSubmitting(false);
     }
@@ -94,34 +179,83 @@ export default function ClaimsScreen({ ctx }) {
     try {
       const res = await api.submitFinalClaim({
         claim_id: claimDraft.claim_id,
-        supporting_documents: claimDraft.supporting_documents
+        supporting_documents: claimDraft.supporting_documents,
       });
-      updateCaseState({ claimResponse: res });
+      setFinalCorrelationId(res.correlation_id);
+      updateCaseState({ claimCorrelationId: res.correlation_id });
       setActiveTab("decision");
       setPolling(true);
-    } catch (err) {
-      console.error(err);
+    } catch (_) {
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleUpload = (docToUpload) => {
-    const updatedDocs = claimDraft.supporting_documents.map(d => 
-      d.code === docToUpload.code ? { ...d, url: "https://mock-url.com/doc.pdf" } : d
-    );
-    setClaimDraft({ ...claimDraft, supporting_documents: updatedDocs });
+  const handleQuerySubmit = async () => {
+    setSubmitting(true);
+    try {
+      const res = await api.respondClaimQuery({
+        claim_id: claimDraft?.claim_id || claimId,
+        ...(queryAnswer && {
+          questionnaire_response: {
+            status: "completed",
+            item: [{ linkId: "query-1", answer: [{ valueString: queryAnswer }] }],
+          },
+        }),
+      });
+      setShowQueryDrawer(false);
+      setFinalCorrelationId(res.correlation_id);
+      updateCaseState({ claimCorrelationId: res.correlation_id });
+      setActiveTab("decision");
+      setPolling(true);
+    } catch (_) {
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const hasMissingDocs = claimDraft?.supporting_documents?.some(d => !d.optional && !d.url);
+  const handleResubmitClaim = async () => {
+    setSubmitting(true);
+    try {
+      const res = await api.resubmitClaim({ claim_id: claimDraft?.claim_id || claimId });
+      setShowResubmitDrawer(false);
+      setFinalCorrelationId(res.correlation_id);
+      updateCaseState({ claimCorrelationId: res.correlation_id });
+      setActiveTab("decision");
+      setPolling(true);
+    } catch (_) {
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const tabs = [
+    { id: "draft", label: "Claim Draft" },
+    { id: "discharge", label: "Discharge Claim" },
+    { id: "final", label: "Final Claim" },
+    { id: "decision", label: "Claim Decision" },
+  ];
+
+  const hasMissingFields = missingFields.length > 0;
+  const hasPreauthRef = !!claimDraft?.preauth_ref;
+  const hasMissingDocs = claimDraft?.supporting_documents?.some((d) => !d.optional && !d.url);
+  const canSubmit = !hasMissingFields && hasPreauthRef && !hasMissingDocs && !submitting;
+
+  const claimDecision = claimStatus?.decision;
+  const isClaimQueried = claimDecision === "QUERIED";
+  const isClaimRejected = claimDecision === "REJECTED" || claimDecision === "PARTIALLY_APPROVED";
 
   if (loading) {
-    return <div className="flex-center py-20 flex-col"><div className="spinner mb-4" /><p className="text-muted">Generating Claim Draft...</p></div>;
+    return (
+      <div className="flex-center py-20 flex-col">
+        <div className="spinner mb-4" />
+        <p className="text-muted">Building claim draft…</p>
+      </div>
+    );
   }
 
   return (
     <div className="wizard-step">
-      {/* Tabs Header */}
       <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--border-color)", paddingBottom: "16px", marginBottom: "24px", overflowX: "auto" }}>
         {tabs.map((tab) => (
           <button
@@ -136,7 +270,7 @@ export default function ClaimsScreen({ ctx }) {
               cursor: "pointer",
               fontWeight: activeTab === tab.id ? 600 : 400,
               whiteSpace: "nowrap",
-              transition: "all 0.2s"
+              transition: "all 0.2s",
             }}
           >
             {tab.label}
@@ -144,160 +278,247 @@ export default function ClaimsScreen({ ctx }) {
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="tab-content">
-        {activeTab === "draft" && (
-          <Card title="Final Claim Details">
-            <div style={{ display: "flex", gap: "24px", marginBottom: "20px" }}>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Admission</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.admission_date}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Discharge</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.discharge_date}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Preauth Ref</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.preauth_ref}</div>
-              </div>
+      {activeTab === "draft" && (
+        <Card title="Claim Draft">
+          {hasMissingFields && (
+            <div style={{ marginBottom: "16px" }}>
+              <MissingFieldsAlert fields={missingFields} onResolve={() => setShowContextDrawer(true)} />
             </div>
-
-            <div className="table-responsive-wrapper">
-              <table className="table-modern" style={{ fontSize: "13px" }}>
-                <thead>
-                  <tr>
-                    <th>Final Bill Items</th>
-                    <th>Qty</th>
-                    <th style={{ textAlign: "right" }}>Net Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {claimDraft?.items?.map((item, i) => (
-                    <tr key={i}>
-                      <td>{item.service_name}</td>
-                      <td>{item.quantity}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>₹{item.net_amount?.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          )}
+          {!hasPreauthRef && (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "10px 14px", background: "rgba(239,68,68,0.06)", border: "1px solid var(--error)", borderRadius: "10px", marginBottom: "16px", fontSize: "13px", color: "var(--error)", fontWeight: 600 }}>
+              <AlertCircle size={14} />
+              No approved preauth reference on this claim. Submit and await preauth before proceeding.
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
-              <Button variant="primary" onClick={() => setActiveTab("discharge")}>Proceed to Discharge Docs <ArrowRight size={16} style={{ marginLeft: "8px" }} /></Button>
+          )}
+          <div style={{ display: "flex", gap: "24px", marginBottom: "20px", fontSize: "13px" }}>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Admission</div>
+              <div style={{ fontWeight: 600 }}>{claimDraft?.admission_date || "—"}</div>
             </div>
-          </Card>
-        )}
-
-        {activeTab === "discharge" && (
-          <Card title="Discharge Documents">
-            <DocumentChecklist documents={claimDraft?.supporting_documents} onUpload={handleUpload} />
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
-              <Button variant="text" onClick={() => setActiveTab("draft")}>Back</Button>
-              <Button 
-                variant="primary" 
-                disabled={hasMissingDocs || submitting}
-                onClick={handleSubmitDischarge}
-              >
-                {submitting ? "Submitting..." : "Submit Discharge & Proceed"}
-              </Button>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Discharge</div>
+              <div style={{ fontWeight: 600 }}>{claimDraft?.discharge_date || "—"}</div>
             </div>
-          </Card>
-        )}
-
-        {activeTab === "final" && (
-          <Card title="Final Claim Overview">
-            <div style={{ display: "flex", gap: "24px", marginBottom: "20px" }}>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Admission</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.admission_date}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Discharge</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.discharge_date}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Preauth Ref</div>
-                <div style={{ fontWeight: 600 }}>{claimDraft?.preauth_ref}</div>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Preauth Ref</div>
+              <div style={{ fontWeight: 600, color: hasPreauthRef ? "var(--primary)" : "var(--error)" }}>
+                {claimDraft?.preauth_ref || "Missing"}
               </div>
             </div>
-
-            <div className="table-responsive-wrapper" style={{ marginBottom: "24px" }}>
-              <table className="table-modern" style={{ fontSize: "13px" }}>
-                <thead>
-                  <tr>
-                    <th>Final Bill Items</th>
-                    <th>Qty</th>
-                    <th style={{ textAlign: "right" }}>Net Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {claimDraft?.items?.map((item, i) => (
-                    <tr key={i}>
-                      <td>{item.service_name}</td>
-                      <td>{item.quantity}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>₹{item.net_amount?.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Total</div>
+              <div style={{ fontWeight: 700, color: "var(--primary)" }}>₹{claimDraft?.total_amount?.toLocaleString()}</div>
             </div>
-
-            <div style={{ textAlign: "center", marginBottom: "16px", padding: "20px", background: "var(--bg-main)", borderRadius: "12px", border: "1px solid var(--border-color)" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "8px" }}>Final Claim Total</div>
-              <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--primary)" }}>₹{claimDraft?.total_amount?.toLocaleString()}</div>
-            </div>
-            
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <Button 
-                variant="primary" 
-                size="large"
-                icon={Send} 
-                disabled={submitting}
-                onClick={handleSubmitFinal}
-              >
-                {submitting ? "Submitting..." : "Submit Final Claim"}
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === "decision" && (
-          <div>
-            {!claimStatus || polling ? (
-              <Card className="mb-6">
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div className="spinner" style={{ width: "24px", height: "24px" }} />
-                  <div>
-                    <div style={{ fontWeight: 700 }}>Claim Adjudication in Progress</div>
-                    <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Awaiting response from payer...</div>
-                  </div>
-                </div>
-              </Card>
-            ) : (
-              <>
-                <DecisionBanner 
-                  decision={claimStatus?.decision} 
-                  approvedAmount={claimStatus?.approved_amount}
-                />
-                <Card title="Adjudication Summary" className="mb-6">
-                  <AmountGrid totals={claimStatus?.totals} />
-                </Card>
-                
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <Button variant="outline" onClick={() => navigate("/")}>Save & Close</Button>
-                  <div style={{ display: "flex", gap: "12px" }}>
-                    <Button variant="outline" onClick={() => navigate("../reprocess")}>Appeal / Reprocess</Button>
-                    <Button variant="primary" onClick={() => navigate("../payment")}>
-                      Proceed to Payment <ArrowRight size={18} style={{ marginLeft: "8px" }} />
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
-        )}
-      </div>
+          <div className="table-responsive-wrapper" style={{ marginBottom: "20px" }}>
+            <table className="table-modern" style={{ fontSize: "13px" }}>
+              <thead>
+                <tr>
+                  <th>Final Bill Items</th>
+                  <th>Qty</th>
+                  <th style={{ textAlign: "right" }}>Net Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {claimDraft?.items?.map((item, i) => (
+                  <tr key={i}>
+                    <td>{item.service_name}</td>
+                    <td>{item.quantity}</td>
+                    <td style={{ textAlign: "right", fontWeight: 700 }}>₹{item.net_amount?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button variant="primary" disabled={!hasPreauthRef || hasMissingFields} onClick={() => setActiveTab("discharge")}>
+              Proceed to Discharge Docs <ArrowRight size={16} style={{ marginLeft: "8px" }} />
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === "discharge" && (
+        <Card title="Discharge Documents">
+          <DocumentChecklist documents={claimDraft?.supporting_documents} onUpload={handleUpload} />
+          {dischargeCorrelationId && (
+            <div style={{ padding: "10px 14px", background: "rgba(16,185,129,0.06)", border: "1px solid var(--success)", borderRadius: "8px", fontSize: "12px", marginBottom: "16px" }}>
+              Discharge claim submitted — correlation: <code>{dischargeCorrelationId}</code>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "24px" }}>
+            <Button variant="text" onClick={() => setActiveTab("draft")}>Back</Button>
+            <Button
+              variant="primary"
+              disabled={!canSubmit || !!dischargeCorrelationId}
+              onClick={handleSubmitDischarge}
+            >
+              {submitting ? "Submitting…" : dischargeCorrelationId ? "Discharge Submitted ✓" : "Submit Discharge Claim"}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === "final" && (
+        <Card title="Final Claim">
+          <div style={{ display: "flex", gap: "24px", marginBottom: "20px", fontSize: "13px" }}>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Discharge</div>
+              <div style={{ fontWeight: 600 }}>{claimDraft?.discharge_date || "—"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Preauth Ref</div>
+              <div style={{ fontWeight: 600 }}>{claimDraft?.preauth_ref || "—"}</div>
+            </div>
+          </div>
+          <div className="table-responsive-wrapper" style={{ marginBottom: "24px" }}>
+            <table className="table-modern" style={{ fontSize: "13px" }}>
+              <thead>
+                <tr>
+                  <th>Final Bill Items</th>
+                  <th>Qty</th>
+                  <th style={{ textAlign: "right" }}>Net Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {claimDraft?.items?.map((item, i) => (
+                  <tr key={i}>
+                    <td>{item.service_name}</td>
+                    <td>{item.quantity}</td>
+                    <td style={{ textAlign: "right", fontWeight: 700 }}>₹{item.net_amount?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ textAlign: "center", marginBottom: "16px", padding: "20px", background: "var(--bg-main)", borderRadius: "12px", border: "1px solid var(--border-color)" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", marginBottom: "8px" }}>Final Claim Total</div>
+            <div style={{ fontSize: "32px", fontWeight: 800, color: "var(--primary)" }}>₹{claimDraft?.total_amount?.toLocaleString()}</div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <Button
+              variant="primary"
+              size="large"
+              icon={Send}
+              disabled={!canSubmit || submitting}
+              onClick={handleSubmitFinal}
+            >
+              {submitting ? "Submitting…" : "Submit Final Claim"}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === "decision" && (
+        <div>
+          {(!claimStatus || polling) ? (
+            <Card className="mb-6">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="spinner" style={{ width: "24px", height: "24px" }} />
+                <div>
+                  <div style={{ fontWeight: 700 }}>Claim Adjudication in Progress</div>
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                    {finalCorrelationId} · polling every {POLL_INTERVAL_MS / 1000}s
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <>
+              <DecisionBanner decision={claimDecision} approvedAmount={claimStatus?.approved_amount} />
+              <Card title="Adjudication Summary" className="mb-6">
+                <AmountGrid totals={claimStatus?.totals} />
+              </Card>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <Button variant="outline" onClick={() => navigate("/")}>Save & Close</Button>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  {isClaimQueried && (
+                    <>
+                      <Button variant="outline" onClick={() => setShowQueryDrawer(true)}>Respond to Query</Button>
+                      <Button variant="outline" onClick={() => setShowResubmitDrawer(true)}>Resubmit Claim</Button>
+                    </>
+                  )}
+                  {isClaimRejected && (
+                    <>
+                      <Button variant="outline" onClick={() => setShowResubmitDrawer(true)}>Resubmit Claim</Button>
+                      <Button variant="outline" onClick={() => navigate("../reprocess")}>Appeal / Reprocess</Button>
+                    </>
+                  )}
+                  <Button variant="primary" onClick={() => navigate("../payment")}>
+                    Proceed to Payment <ArrowRight size={18} style={{ marginLeft: "8px" }} />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <Drawer open={showQueryDrawer} onClose={() => setShowQueryDrawer(false)} title="Respond to Claim Query">
+        <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
+          Provide a clarification and attach any documents the payer requested.
+        </p>
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>Clarification</label>
+          <textarea
+            className="input-modern"
+            style={{ height: "100px", resize: "vertical" }}
+            placeholder="Describe your response to the payer's query…"
+            value={queryAnswer}
+            onChange={(e) => setQueryAnswer(e.target.value)}
+          />
+        </div>
+        <Button variant="primary" className="w-full" disabled={!queryAnswer || submitting} onClick={handleQuerySubmit} style={{ justifyContent: "center" }}>
+          {submitting ? "Submitting…" : "Submit Response"}
+        </Button>
+      </Drawer>
+
+      <Drawer open={showResubmitDrawer} onClose={() => setShowResubmitDrawer(false)} title="Resubmit Claim">
+        <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
+          Correct clinical or billing data. Only the fields you change are sent; everything else is re-derived from the hospital DB.
+        </p>
+        <div className="table-responsive-wrapper" style={{ marginBottom: "20px" }}>
+          <table className="table-modern" style={{ fontSize: "13px" }}>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Qty</th>
+                <th style={{ textAlign: "right" }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {claimDraft?.items?.map((item, i) => (
+                <tr key={i}>
+                  <td>{item.service_name}</td>
+                  <td>{item.quantity}</td>
+                  <td style={{ textAlign: "right" }}>₹{item.net_amount?.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Button variant="primary" className="w-full" disabled={submitting} onClick={handleResubmitClaim} style={{ justifyContent: "center" }}>
+          {submitting ? "Resubmitting…" : "Resubmit Claim"}
+        </Button>
+      </Drawer>
+
+      <Drawer open={showContextDrawer} onClose={() => setShowContextDrawer(false)} title="Supply Missing Patient Attributes">
+        <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
+          These attributes are required by NHCX but could not be resolved from the hospital DB. They are saved to the cashless case and do not need to be re-sent on submission.
+        </p>
+        <PatientContextForm
+          claimId={claimDraft?.claim_id || claimId}
+          onResolved={(remaining) => {
+            setMissingFields(remaining);
+            if (remaining.length === 0) {
+              setShowContextDrawer(false);
+              loadDraft(claimDraft?.claim_id || claimId);
+            }
+          }}
+        />
+      </Drawer>
     </div>
   );
 }

@@ -1,100 +1,176 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { PlusCircle, Send, ArrowRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Send, AlertCircle } from "lucide-react";
 import { api } from "../../api";
-import { Card, Button, Input } from "../Common";
+import { Button, StatusBadge } from "../Common";
 
 export default function PreauthEnhancement({ ctx, onClose }) {
-  const navigate = useNavigate();
   const { caseState, updateCaseState } = ctx;
-  
+  const { cashless_case_id, claim_id } = caseState;
+
+  const [loading, setLoading] = useState(true);
+  const [preview, setPreview] = useState(null);
+  const [checkedProcedures, setCheckedProcedures] = useState({});
+  const [additionalDocUrl, setAdditionalDocUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [enhancementReason, setEnhancementReason] = useState("");
-  const [additionalAmount, setAdditionalAmount] = useState("");
-  const [uploaded, setUploaded] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const params = {};
+        if (cashless_case_id) params.cashless_case_id = cashless_case_id;
+        else if (claim_id) params.claim_id = claim_id;
+        const res = await api.preparePreauthEnhancement(params);
+        setPreview(res);
+        const initialChecked = {};
+        (res.new_procedures || []).forEach((p, i) => { initialChecked[i] = true; });
+        setCheckedProcedures(initialChecked);
+      } catch (_) {
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const baseAmount = caseState.draftData?.total_amount || 0;
-      const res = await api.submitPreauthEnhancement({
-        claim_id: caseState.draftData?.claim_id || Date.now(),
-        total_amount: baseAmount + Number(additionalAmount),
-        supporting_documents: uploaded ? [
-          {
-            category: "clinical_notes",
-            name: "Updated Clinical Notes",
-            code: "UPDATED_CLINICAL_NOTES",
-            url: "https://hospital.example/records/mock-update.pdf"
-          }
-        ] : []
-      });
-      updateCaseState({ preauthResponse: res });
+      const selectedProcs = (preview.new_procedures || []).filter((_, i) => checkedProcedures[i]);
+      const body = {
+        ...(cashless_case_id ? { cashless_case_id } : { claim_id }),
+        total_amount: preview.current?.total_amount,
+        items: preview.suggested_request?.items || [],
+        ...(selectedProcs.length > 0 && { procedures: selectedProcs }),
+        supporting_documents: [
+          ...(preview.supporting_documents || []),
+          ...(additionalDocUrl
+            ? [{ category: "revised_estimate", name: "Revised Estimate", code: "REVISED_ESTIMATE", url: additionalDocUrl }]
+            : []),
+        ].filter((d) => d.url),
+      };
+      const res = await api.submitPreauthEnhancement(body);
+      updateCaseState({ preauthCorrelationId: res.correlation_id });
       if (onClose) onClose();
-    } catch (err) {
-      console.error(err);
+    } catch (_) {
     } finally {
       setSubmitting(false);
     }
   };
 
+  if (loading) {
+    return <div className="flex-center py-8"><div className="spinner" /></div>;
+  }
+
+  if (!preview) {
+    return (
+      <div style={{ padding: "16px", color: "var(--error)", fontSize: "14px" }}>
+        Failed to load enhancement preview.
+      </div>
+    );
+  }
+
+  if (!preview.enhanceable) {
+    return (
+      <div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", padding: "14px", background: "rgba(245,158,11,0.08)", border: "1px solid var(--warning)", borderRadius: "10px", marginBottom: "20px" }}>
+          <AlertCircle size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: "2px" }} />
+          <div>
+            <div style={{ fontWeight: 700, color: "var(--warning)", marginBottom: "4px" }}>Enhancement Unavailable</div>
+            <div style={{ fontSize: "13px" }}>{preview.reason || "No new procedures or billing found since the approved preauth."}</div>
+          </div>
+        </div>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-        <p className="text-muted" style={{ fontSize: "14px" }}>
-          Submit an enhancement if the clinical situation has changed and additional funds are required before discharge.
-        </p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div>
-            <label className="input-label-modern">Additional Amount Required (₹)</label>
-            <Input 
-              type="number"
-              placeholder="e.g. 15000"
-              value={additionalAmount}
-              onChange={(e) => setAdditionalAmount(e.target.value)}
-            />
-          </div>
-          
-          <div>
-            <label className="input-label-modern">Clinical Reason for Enhancement</label>
-            <textarea 
-              className="input-modern"
-              style={{ height: "100px", resize: "vertical", width: "100%" }}
-              placeholder="Describe why additional funds or procedures are required..."
-              value={enhancementReason}
-              onChange={(e) => setEnhancementReason(e.target.value)}
-            />
-          </div>
-        </div>
-        
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div style={{ display: "flex", gap: "16px", alignItems: "center", padding: "12px 16px", background: "var(--bg-main)", borderRadius: "10px", border: "1px solid var(--border-color)", fontSize: "13px" }}>
         <div>
-          <h4 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Required Documents</h4>
-          <div className="warning-banner mb-4" style={{ background: "rgba(245,158,11,0.1)", color: "var(--warning)", fontSize: "13px" }}>
-            Please attach updated clinical notes or investigation reports justifying the enhancement.
-          </div>
-          {/* Mocking document list for enhancement */}
-          <div className="doc-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
-            <span style={{ fontSize: "14px", fontWeight: 600 }}>Updated Clinical Notes</span>
-            {uploaded ? (
-              <span className="badge-modern badge-success" style={{ fontSize: '10px' }}>Attached</span>
-            ) : (
-              <Button variant="outline" size="small" onClick={() => setUploaded(true)}>Upload</Button>
-            )}
-          </div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Preauth Ref</div>
+          <div style={{ fontWeight: 700 }}>{preview.preauth_ref || "—"}</div>
         </div>
+        <div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Authorized Total</div>
+          <div style={{ fontWeight: 700 }}>₹{preview.authorized?.total_amount?.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Revised Total</div>
+          <div style={{ fontWeight: 800, color: "var(--primary)" }}>₹{preview.current?.total_amount?.toLocaleString()}</div>
+        </div>
+        {preview.delta_amount != null && (
+          <div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Delta</div>
+            <div style={{ fontWeight: 700, color: "var(--success)" }}>+₹{preview.delta_amount?.toLocaleString()}</div>
+          </div>
+        )}
+      </div>
 
-        <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "16px" }}>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button 
-            variant="primary" 
-            icon={Send}
-            disabled={!additionalAmount || !enhancementReason || submitting}
-            onClick={handleSubmit}
-          >
-            {submitting ? "Submitting..." : "Submit Enhancement"}
-          </Button>
+      {preview.new_procedures?.length > 0 && (
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "10px" }}>New Procedures</div>
+          {preview.new_procedures.map((proc, i) => (
+            <label key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px", border: "1px solid var(--border-color)", borderRadius: "8px", marginBottom: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={!!checkedProcedures[i]}
+                onChange={(e) => setCheckedProcedures((p) => ({ ...p, [i]: e.target.checked }))}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>{proc.name}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{proc.code} · {proc.date}</div>
+              </div>
+            </label>
+          ))}
         </div>
+      )}
+
+      {preview.new_items?.length > 0 && (
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "8px" }}>New Line Items</div>
+          <table className="table-modern" style={{ fontSize: "12px", width: "100%" }}>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Qty</th>
+                <th style={{ textAlign: "right" }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.new_items.map((item, i) => (
+                <tr key={i}>
+                  <td>{item.service_name}</td>
+                  <td>{item.quantity}</td>
+                  <td style={{ textAlign: "right" }}>₹{item.net_amount?.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div>
+        <label style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>Revised Estimate URL (required)</label>
+        <input
+          className="input-modern"
+          placeholder="https://hospital.example/records/revised-estimate.pdf"
+          value={additionalDocUrl}
+          onChange={(e) => setAdditionalDocUrl(e.target.value)}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button
+          variant="primary"
+          icon={Send}
+          disabled={!additionalDocUrl || submitting}
+          onClick={handleSubmit}
+        >
+          {submitting ? "Submitting…" : "Submit Enhancement"}
+        </Button>
       </div>
     </div>
   );

@@ -8,15 +8,21 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 // Base URL for real network calls. Change this to match your backend server.
 const BASE_URL =
   import.meta.env.VITE_BASE_URL ||
-  "http://localhost:5173/nhcx/backend/api/v1/insurance";
+  "http://localhost:8082/api/v1/insurance";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Build a full URL with query params from an object (undefined values are skipped). */
+/** RFC-4122 v4 UUID — mandatory request_id for every API call. */
+export const generateRequestId = () =>
+  "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+
+/** Build a full URL with query params (undefined/null/"" values are skipped). */
 const buildUrl = (path, params = {}) => {
   const url = new URL(BASE_URL + path, window.location.origin);
-  // const url = BASE_URL;
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== "")
       url.searchParams.append(k, v);
@@ -24,46 +30,48 @@ const buildUrl = (path, params = {}) => {
   return url.toString();
 };
 
-/** Wrapper around fetch — throws on non-2xx responses. */
+const dispatchError = (msg) =>
+  window.dispatchEvent(new CustomEvent("api-error", { detail: msg }));
+
+/** Wrapper around fetch — auto-injects request_id; throws on non-2xx. */
 const http = {
   get: async (path, params = {}) => {
+    const merged = { request_id: generateRequestId(), ...params };
     try {
-      const res = await fetch(buildUrl(path, params), {
+      const res = await fetch(buildUrl(path, merged), {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok)
         throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(
-        new CustomEvent("api-error", { detail: err.message }),
-      );
+      dispatchError(err.message);
       throw err;
     }
   },
   post: async (path, body = {}) => {
+    const merged = { request_id: generateRequestId(), ...body };
     try {
       const res = await fetch(BASE_URL + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(merged),
       });
       if (!res.ok)
         throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(
-        new CustomEvent("api-error", { detail: err.message }),
-      );
+      dispatchError(err.message);
       throw err;
     }
   },
   patch: async (path, body = {}) => {
+    const merged = { request_id: generateRequestId(), ...body };
     try {
       const res = await fetch(BASE_URL + path, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(merged),
       });
       if (!res.ok)
         throw new Error(
@@ -71,9 +79,43 @@ const http = {
         );
       return await res.json();
     } catch (err) {
-      window.dispatchEvent(
-        new CustomEvent("api-error", { detail: err.message }),
-      );
+      dispatchError(err.message);
+      throw err;
+    }
+  },
+  put: async (path, body = {}) => {
+    const merged = { request_id: generateRequestId(), ...body };
+    try {
+      const res = await fetch(BASE_URL + path, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged),
+      });
+      if (!res.ok)
+        throw new Error(`PUT ${path} failed: ${res.status} ${res.statusText}`);
+      return await res.json();
+    } catch (err) {
+      dispatchError(err.message);
+      throw err;
+    }
+  },
+  /** Fire an arbitrary POST to a full path (used by Work Queue task actions). */
+  rawPost: async (fullPath, body = {}) => {
+    const merged = { request_id: generateRequestId(), ...body };
+    const url = fullPath.startsWith("http")
+      ? fullPath
+      : window.location.origin + fullPath;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged),
+      });
+      if (!res.ok)
+        throw new Error(`POST ${fullPath} failed: ${res.status} ${res.statusText}`);
+      return await res.json();
+    } catch (err) {
+      dispatchError(err.message);
       throw err;
     }
   },
@@ -968,121 +1010,149 @@ const mock = {
   // ─── Tasks ──────────────────────────────────────────────────────────────────
   listTasks: async (params = {}) => {
     await delay(600);
+    const allTasks = [
+      {
+        id: "T-201",
+        task_id: "T-201",
+        claim_id: 101,
+        cashless_case_id: 4,
+        child_id: 12,
+        correlation_id: "5c2a6db0-b4c1-47e2-bf6d-3db2ed6e8f11",
+        workflow: "preauth",
+        task_type: "respond_preauth_query",
+        title: "Respond to preauth query from Sample Payer",
+        description:
+          "Payer has raised a query requesting investigation report and clinical justification.",
+        priority: "urgent",
+        status: params.status || "pending",
+        required_documents: [
+          { code: "INVESTIGATION_REPORT", display: "Investigation Report", name: "Investigation Report" },
+          { code: "MEDICAL_CERTIFICATE", display: "Medical Certificate", name: "Medical Certificate" },
+        ],
+        action: {
+          label: "Respond to Query",
+          method: "POST",
+          endpoint: "/api/v1/insurance/cashless/preauth/query-response",
+          payload_hint: { claim_id: 101 },
+        },
+        metadata: {
+          decision: "QUERIED",
+          payer_notes: "Clinical justification required for procedure code 47562.",
+        },
+        created_at: "2026-06-04T10:00:00+05:30",
+        completed_at: null,
+      },
+      {
+        id: "T-202",
+        task_id: "T-202",
+        claim_id: 102,
+        cashless_case_id: 5,
+        child_id: 19,
+        correlation_id: "ack-corr-102",
+        workflow: "payment",
+        task_type: "review_payment_ack_failure",
+        title: "Retry payment acknowledgement for Claim #102",
+        description: "Auto-acknowledgement failed. Manual retry required.",
+        priority: "high",
+        status: params.status || "pending",
+        required_documents: [],
+        action: {
+          label: "Retry Acknowledgement",
+          method: "POST",
+          endpoint: "/api/v1/insurance/cashless/payment/acknowledge",
+          payload_hint: { payment_reference: "PAY-2026-00001" },
+        },
+        metadata: { acknowledgement_error: "Timeout reaching NHCX gateway" },
+        created_at: "2026-06-03T08:30:00+05:30",
+        completed_at: null,
+      },
+      {
+        id: "T-203",
+        task_id: "T-203",
+        claim_id: 103,
+        cashless_case_id: 6,
+        child_id: 25,
+        correlation_id: null,
+        workflow: "claim",
+        task_type: "submit_final_claim",
+        title: "Submit final bill for Riya Sharma",
+        description:
+          "Final invoice is ready. Submit the final claim for adjudication.",
+        priority: "normal",
+        status: params.status || "pending",
+        required_documents: [
+          { code: "FINAL_BILL", display: "Final Bill", name: "Final Bill" },
+          { code: "DISCHARGE_SUMMARY", display: "Discharge Summary", name: "Discharge Summary" },
+        ],
+        action: {
+          label: "Submit Final Claim",
+          method: "POST",
+          endpoint: "/api/v1/insurance/cashless/claims/submit",
+          payload_hint: { claim_id: 103 },
+        },
+        metadata: {},
+        created_at: "2026-06-02T12:00:00+05:30",
+        completed_at: null,
+      },
+    ];
+    const filtered = params.status
+      ? allTasks.filter((t) => t.status === params.status)
+      : allTasks;
+    const byChild = params.child_id
+      ? filtered.filter((t) => t.child_id === Number(params.child_id))
+      : filtered;
     return {
-      total_count: 3,
+      total_count: byChild.length,
       limit: params.limit || 20,
       offset: params.offset || 0,
-      tasks: [
-        {
-          task_id: "T-201",
-          claim_id: 101,
-          cashless_case_id: 4,
-          child_id: 12,
-          workflow: "preauth",
-          task_type: "respond_query",
-          title: "Respond to preauth query from Sample Payer",
-          description:
-            "Payer has raised a query requesting investigation report and clinical justification.",
-          priority: "urgent",
-          status: "pending",
-          required_documents: [
-            { code: "INVESTIGATION_REPORT", display: "Investigation Report" },
-            { code: "MEDICAL_CERTIFICATE", display: "Medical Certificate" },
-          ],
-          action: {
-            label: "Respond to Query",
-            endpoint: "/api/v1/insurance/cashless/preauth/query-response",
-            payload_hint: { claim_id: 101 },
-          },
-          created_at: "2026-05-12T10:00:00+05:30",
-          updated_at: "2026-05-12T10:00:00+05:30",
-        },
-        {
-          task_id: "T-202",
-          claim_id: 102,
-          cashless_case_id: 5,
-          child_id: 19,
-          workflow: "payment",
-          task_type: "acknowledge_payment",
-          title: "Retry payment acknowledgement for Claim #102",
-          description: "Auto-acknowledgement failed. Manual retry required.",
-          priority: "high",
-          status: "pending",
-          required_documents: [],
-          action: {
-            label: "Retry Acknowledgement",
-            endpoint: "/api/v1/insurance/cashless/payment/acknowledge",
-            payload_hint: { payment_reference: "PAY-2026-00001" },
-          },
-          created_at: "2026-05-13T08:30:00+05:30",
-          updated_at: "2026-05-13T08:30:00+05:30",
-        },
-        {
-          task_id: "T-203",
-          claim_id: 103,
-          cashless_case_id: 6,
-          child_id: 25,
-          workflow: "claim",
-          task_type: "submit_documents",
-          title: "Submit final bill for Riya Sharma claim",
-          description:
-            "Final invoice is available. Please submit the final claim for adjudication.",
-          priority: "normal",
-          status: "pending",
-          required_documents: [{ code: "FINAL_BILL", display: "Final Bill" }],
-          action: {
-            label: "Submit Claim",
-            endpoint: "/api/v1/insurance/cashless/claims/submit",
-            payload_hint: { claim_id: 103 },
-          },
-          created_at: "2026-05-14T12:00:00+05:30",
-          updated_at: "2026-05-14T12:00:00+05:30",
-        },
-      ],
+      tasks: byChild,
     };
   },
 
   getTask: async (task_id) => {
     await delay(400);
     return {
+      id: task_id,
       task_id,
       claim_id: 101,
       cashless_case_id: 4,
       child_id: 12,
+      correlation_id: "5c2a6db0-b4c1-47e2-bf6d-3db2ed6e8f11",
       workflow: "preauth",
-      task_type: "respond_query",
+      task_type: "respond_preauth_query",
       title: "Respond to preauth query from Sample Payer",
       description:
         "Payer has raised a query requesting investigation report and clinical justification.",
       priority: "urgent",
       status: "pending",
       required_documents: [
-        { code: "INVESTIGATION_REPORT", display: "Investigation Report" },
-        { code: "MEDICAL_CERTIFICATE", display: "Medical Certificate" },
+        { code: "INVESTIGATION_REPORT", display: "Investigation Report", name: "Investigation Report" },
+        { code: "MEDICAL_CERTIFICATE", display: "Medical Certificate", name: "Medical Certificate" },
       ],
       action: {
         label: "Respond to Query",
+        method: "POST",
         endpoint: "/api/v1/insurance/cashless/preauth/query-response",
         payload_hint: { claim_id: 101 },
       },
       metadata: {
         decision: "QUERIED",
         errors: [],
-        payer_notes:
-          "Clinical justification required for procedure code 47562.",
+        payer_notes: "Clinical justification required for procedure code 47562.",
       },
-      created_at: "2026-05-12T10:00:00+05:30",
-      updated_at: "2026-05-12T10:00:00+05:30",
+      created_at: "2026-06-04T10:00:00+05:30",
+      completed_at: null,
     };
   },
 
   completeTask: async (task_id, data = {}) => {
     await delay(500);
     return {
+      id: task_id,
       task_id,
       status: "completed",
       note: data.note || "",
-      updated_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
     };
   },
 
@@ -1096,63 +1166,216 @@ const mock = {
       communications: [
         {
           correlation_id: "comm-abc-001",
+          workflow: "communication",
+          status: "complete",
           payer_code: "1518@hcx",
           reason_code: "tatquery",
           reason_display: "TAT Query",
           topic_display: "Pre-authorization TAT Exceeded",
-          priority: "high",
+          priority: "urgent",
           claim_reference: "CLM-101",
-          sent_at: "2026-05-13T09:00:00+05:30",
+          cashless_case_id: 4,
+          claim_id: 101,
+          child_id: 12,
+          subject: "Claim CLM-101 / Arjun Mehta",
+          sent_at: "2026-06-03T09:00:00+05:30",
+          received_at: "2026-06-03T09:00:05+05:30",
           acknowledged: true,
-          acknowledged_at: "2026-05-13T09:01:00+05:30",
+          acknowledged_at: "2026-06-03T09:00:06+05:30",
+          provider_read: true,
+          provider_read_at: "2026-06-03T09:05:00+05:30",
+          ack_correlation_id: "ack-tatq-001",
+          comm_status: "completed",
+          task_requester: "Sample Payer",
+          authored_on: "2026-06-03T09:00:00+05:30",
+          task_inputs: { claimNumber: "CLM-101", claimId: "101" },
+          payload: [
+            { content_string: "The pre-authorization for claim CLM-101 has exceeded the standard TAT of 2 hours. Please update the clinical status and confirm the estimated discharge date." },
+          ],
           pending_tasks: [],
+          completed_tasks: [],
         },
         {
           correlation_id: "comm-abc-002",
+          workflow: "communication",
+          status: "complete",
           payer_code: "2044@hcx",
           reason_code: "additionalinfo",
-          reason_display: "Additional Information Request",
-          topic_display: "Additional documents requested",
-          priority: "normal",
+          reason_display: "Additional Information",
+          topic_display: "Additional Documents Required",
+          priority: "asap",
           claim_reference: "CLM-102",
-          sent_at: "2026-05-14T11:30:00+05:30",
-          acknowledged: false,
-          acknowledged_at: null,
+          cashless_case_id: 5,
+          claim_id: 102,
+          child_id: 19,
+          subject: "Claim CLM-102 / Aisha Kapoor",
+          sent_at: "2026-06-04T11:30:00+05:30",
+          received_at: "2026-06-04T11:30:04+05:30",
+          acknowledged: true,
+          acknowledged_at: "2026-06-04T11:30:05+05:30",
+          provider_read: false,
+          provider_read_at: null,
+          ack_correlation_id: "ack-addinfo-002",
+          comm_status: "completed",
+          task_requester: "Star Health & Allied",
+          authored_on: "2026-06-04T11:30:00+05:30",
+          task_inputs: {
+            claimNumber: "CLM-102",
+            claimId: "102",
+            INVESTIGATION_REPORT: "Investigation Report",
+            DISCHARGE_SUMMARY: "Discharge Summary",
+          },
+          payload: [
+            { content_string: "Please submit the investigation report and discharge summary for claim CLM-102 to proceed with adjudication." },
+            { content_attachment: "https://payer.example/query-letter-102.pdf" },
+          ],
           pending_tasks: [
             {
+              id: "T-301",
               task_id: "T-301",
               task_type: "review_communication",
-              title: "Review payer communication",
-              priority: "normal",
+              title: "Submit documents for Aisha Kapoor — Claim #102",
+              description: "Payer has requested investigation report and discharge summary.",
+              priority: "urgent",
+              workflow: "communication",
+              status: "pending",
+              required_documents: [
+                { code: "INVESTIGATION_REPORT", name: "Investigation Report", display: "Investigation Report" },
+                { code: "DISCHARGE_SUMMARY", name: "Discharge Summary", display: "Discharge Summary" },
+              ],
+              action: {
+                label: "Submit Documents",
+                method: "POST",
+                endpoint: "/api/v1/insurance/cashless/claims/query-response",
+                payload_hint: { claim_id: 102 },
+              },
+              metadata: {
+                reason_code: "additionalinfo",
+                claim_reference: "CLM-102",
+                claim_id: 102,
+                claim_decision: "QUERIED",
+              },
+              created_at: "2026-06-04T11:30:06+05:30",
             },
           ],
+          completed_tasks: [],
         },
       ],
     };
   },
 
+  markCommunicationRead: async (correlation_id) => {
+    await delay(300);
+    return { correlation_id, provider_read: true, provider_read_at: new Date().toISOString() };
+  },
+
   getCommunicationStatus: async (correlation_id) => {
     await delay(500);
-    return {
-      correlation_id,
-      payer_code: "1518@hcx",
-      reason_code: "tatquery",
-      reason_display: "TAT Query",
-      topic_display: "Pre-authorization TAT Exceeded",
-      priority: "high",
-      claim_reference: "CLM-101",
-      sent_at: "2026-05-13T09:00:00+05:30",
-      acknowledged: true,
-      acknowledged_at: "2026-05-13T09:01:00+05:30",
-      payload: [
-        {
-          content_type: "text",
-          content:
-            "The pre-authorization for claim CLM-101 has exceeded the standard TAT of 2 hours. Please provide an update on the status.",
+    const all = {
+      "comm-abc-001": {
+        correlation_id: "comm-abc-001",
+        workflow: "communication",
+        status: "complete",
+        payer_code: "1518@hcx",
+        reason_code: "tatquery",
+        reason_display: "TAT Query",
+        topic_display: "Pre-authorization TAT Exceeded",
+        priority: "urgent",
+        claim_reference: "CLM-101",
+        cashless_case_id: 4,
+        claim_id: 101,
+        child_id: 12,
+        subject: "Claim CLM-101 / Arjun Mehta",
+        sent_at: "2026-06-03T09:00:00+05:30",
+        received_at: "2026-06-03T09:00:05+05:30",
+        acknowledged: true,
+        acknowledged_at: "2026-06-03T09:00:06+05:30",
+        provider_read: true,
+        provider_read_at: "2026-06-03T09:05:00+05:30",
+        ack_correlation_id: "ack-tatq-001",
+        comm_status: "completed",
+        task_requester: "Sample Payer",
+        authored_on: "2026-06-03T09:00:00+05:30",
+        task_inputs: { claimNumber: "CLM-101", claimId: "101" },
+        payload: [
+          { content_string: "The pre-authorization for claim CLM-101 has exceeded the standard TAT of 2 hours. Please update the clinical status and confirm the estimated discharge date." },
+        ],
+        pending_tasks: [],
+        completed_tasks: [],
+      },
+      "comm-abc-002": {
+        correlation_id: "comm-abc-002",
+        workflow: "communication",
+        status: "complete",
+        payer_code: "2044@hcx",
+        reason_code: "additionalinfo",
+        reason_display: "Additional Information",
+        topic_display: "Additional Documents Required",
+        priority: "asap",
+        claim_reference: "CLM-102",
+        cashless_case_id: 5,
+        claim_id: 102,
+        child_id: 19,
+        subject: "Claim CLM-102 / Aisha Kapoor",
+        sent_at: "2026-06-04T11:30:00+05:30",
+        received_at: "2026-06-04T11:30:04+05:30",
+        acknowledged: true,
+        acknowledged_at: "2026-06-04T11:30:05+05:30",
+        provider_read: false,
+        provider_read_at: null,
+        ack_correlation_id: "ack-addinfo-002",
+        comm_status: "completed",
+        task_requester: "Star Health & Allied",
+        authored_on: "2026-06-04T11:30:00+05:30",
+        task_inputs: {
+          claimNumber: "CLM-102",
+          claimId: "102",
+          INVESTIGATION_REPORT: "Investigation Report",
+          DISCHARGE_SUMMARY: "Discharge Summary",
         },
-      ],
-      pending_tasks: [],
+        payload: [
+          { content_string: "Please submit the investigation report and discharge summary for claim CLM-102 to proceed with adjudication." },
+          { content_attachment: "https://payer.example/query-letter-102.pdf" },
+        ],
+        pending_tasks: [
+          {
+            id: "T-301",
+            task_id: "T-301",
+            task_type: "review_communication",
+            title: "Submit documents for Aisha Kapoor — Claim #102",
+            description: "Payer has requested investigation report and discharge summary.",
+            priority: "urgent",
+            workflow: "communication",
+            status: "pending",
+            required_documents: [
+              { code: "INVESTIGATION_REPORT", name: "Investigation Report", display: "Investigation Report" },
+              { code: "DISCHARGE_SUMMARY", name: "Discharge Summary", display: "Discharge Summary" },
+            ],
+            action: {
+              label: "Submit Documents",
+              method: "POST",
+              endpoint: "/api/v1/insurance/cashless/claims/query-response",
+              payload_hint: { claim_id: 102 },
+            },
+            metadata: {
+              reason_code: "additionalinfo",
+              claim_reference: "CLM-102",
+              claim_id: 102,
+              claim_decision: "QUERIED",
+            },
+            created_at: "2026-06-04T11:30:06+05:30",
+          },
+        ],
+        completed_tasks: [],
+      },
     };
+    return all[correlation_id] ?? all["comm-abc-001"];
+  },
+
+  // ─── Escape hatch for Work Queue task actions ────────────────────────────────
+  rawPost: async (fullPath, body = {}) => {
+    await delay(800);
+    return { correlation_id: generateRequestId(), status: "submitted", message: "Action submitted (mock)" };
   },
 
   // ─── Gateway Status Recovery ─────────────────────────────────────────────────
@@ -1166,21 +1389,78 @@ const mock = {
   },
 
   // ─── Facilities Admin ───────────────────────────────────────────────────────
-  listFacilities: async (params = {}) => {
-    await delay(500);
-    return { facilities: [] };
-  },
-  createFacility: async (data) => {
-    await delay(500);
-    return { status: "success", facility_code: data.facility_code };
+  listFacilities: async () => {
+    await delay(600);
+    return {
+      facilities: [
+        {
+          facility_code: "HOSP-001",
+          name: "City General Hospital",
+          hcx_participant_code: "1000099999@hcx",
+          active: true,
+          private_key_set: true,
+          environment: "production",
+          registry_id: "HFR-12345",
+          scheme_code: "PMJAY",
+          state: "AndhraPradesh",
+          district: "Krishna",
+          roles: ["10001"],
+          linked_registry_codes: ["10001"],
+          endpoint_url: "https://city-general.example/hcx/callback",
+          primary_email: "hcx@citygeneral.example",
+          primary_mobile: "9876543210",
+          abdm_registration: { success: true },
+        },
+        {
+          facility_code: "HOSP-002",
+          name: "District Paediatric Centre",
+          hcx_participant_code: "1000088888@hcx",
+          active: true,
+          private_key_set: false,
+          environment: "sandbox",
+          registry_id: "DEMO_CLIENT",
+          scheme_code: null,
+          state: "Telangana",
+          district: "Hyderabad",
+          roles: ["10001"],
+          linked_registry_codes: [],
+          endpoint_url: null,
+          primary_email: "admin@dpc.example",
+          primary_mobile: null,
+          abdm_registration: { success: false, error: "Signing cert path not provided" },
+        },
+      ],
+    };
   },
   getFacility: async (facility_code) => {
-    await delay(500);
-    return { facility_code, name: "Mock Facility" };
+    await delay(400);
+    return { facility_code, name: "Mock Facility", hcx_participant_code: `${facility_code}@hcx`, active: true, private_key_set: false, environment: "sandbox" };
   },
-  uploadFacilityKey: async (facility_code, data) => {
-    await delay(500);
-    return { status: "success" };
+  createFacility: async (data) => {
+    await delay(900);
+    return {
+      facility_code: data.facility_code,
+      name: data.name,
+      hcx_participant_code: data.hcx_participant_code,
+      active: data.active ?? true,
+      private_key_set: !!data.private_key_pem,
+      environment: data.environment || "sandbox",
+      registry_id: data.registry_id || null,
+      abdm_registration: { success: true },
+    };
+  },
+  updateFacility: async (facility_code, data) => {
+    await delay(900);
+    return {
+      facility_code,
+      ...data,
+      private_key_set: !!data.private_key_pem,
+      abdm_registration: { success: true },
+    };
+  },
+  uploadFacilityKey: async (facility_code) => {
+    await delay(700);
+    return { facility_code, private_key_set: true };
   },
 };
 
@@ -1288,14 +1568,20 @@ const real = {
   getCommunicationStatus: (correlation_id) =>
     http.get(`/cashless/communication/status/${correlation_id}`),
 
+  markCommunicationRead: (correlation_id) =>
+    http.patch(`/cashless/communication/${correlation_id}/read`, {}),
+
   requestGatewayStatus: (data) => http.post("/cashless/status/request", data),
 
   // ─── Facilities Admin ───────────────────────────────────────────────────────
-  listFacilities: (params = {}) => http.get("/facilities", params),
-  createFacility: (data) => http.post("/facilities", data),
+  listFacilities: () => http.get("/facilities"),
   getFacility: (facility_code) => http.get(`/facilities/${facility_code}`),
-  uploadFacilityKey: (facility_code, data) =>
-    http.post(`/facilities/${facility_code}/private_key`, data),
+  createFacility: (data) => http.post("/facilities", data),
+  updateFacility: (facility_code, data) => http.put(`/facilities/${facility_code}`, data),
+  uploadFacilityKey: (facility_code, data) => http.put(`/facilities/${facility_code}/private_key`, data),
+
+  // ─── Escape hatch for Work Queue task actions ────────────────────────────────
+  rawPost: (fullPath, body = {}) => http.rawPost(fullPath, body),
 };
 
 // ─── Exported API  ────────────────────────────────────────────────────────────
