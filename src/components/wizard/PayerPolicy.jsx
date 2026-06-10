@@ -55,7 +55,7 @@ export default function PayerPolicy({ ctx }) {
       try {
         const res = await api.fetchPolicies({
           child_id: patient.child_id,
-          payer_code: selectedPayer.participant_code,
+          payer_id: selectedPayer.participant_code,
         });
         setPolicies(res?.data?.policies || []);
       } catch (err) {

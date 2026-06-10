@@ -86,7 +86,7 @@ export default function PreauthDraft({ ctx }) {
       const params = {};
       if (cashless_case_id) params.cashless_case_id = cashless_case_id;
       else if (claim_id) params.claim_id = claim_id;
-      if (payer?.participant_code) params.payer_code = payer.participant_code;
+      if (payer?.participant_code) params.payer_id = payer.participant_code;
       if (policy?.policyNumber || policy?.policy_number) params.policy_number = policy.policyNumber || policy.policy_number;
 
       const res = await api.preparePreauth(params);
@@ -120,7 +120,7 @@ export default function PreauthDraft({ ctx }) {
     try {
       const body = {
         ...(cashless_case_id ? { cashless_case_id } : { claim_id: draft.claim_id }),
-        ...(draft.payer_code && { payer_code: draft.payer_code }),
+        ...(draft.payer_id && { payer_id: draft.payer_id }),
         ...(draft.policy_number && { policy_number: draft.policy_number }),
         ...(draft.eligibility?.correlation_id && {
           eligibility_correlation_id: draft.eligibility.correlation_id,

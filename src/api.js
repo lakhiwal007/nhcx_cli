@@ -365,13 +365,13 @@ const mock = {
       status: "success",
       data: {
         child_id: data.child_id,
-        payer_code: data.payer_code,
+        payer_id: data.payer_id,
         identifier_used: { type: "AbhaNumber", value: "91711234567890" },
         policies: [
           {
             policy_number: "POL-91711234567890-2026",
             product_name: "GeneralHealth-2026",
-            payer_id: data.payer_code,
+            payer_id: data.payer_id,
             payer_name: "Sample Payer",
             status: "active",
             sum_insured: 500000,
@@ -382,7 +382,7 @@ const mock = {
           {
             policy_number: "POL-ALT-2026",
             product_name: "Family Floater Plus",
-            payer_id: data.payer_code,
+            payer_id: data.payer_id,
             payer_name: "Sample Payer",
             status: "active",
             sum_insured: 300000,
@@ -403,7 +403,7 @@ const mock = {
       cashless_case_id: 4,
       claim_id: data.claim_id,
       child_id: data.child_id,
-      payer_code: data.payer_code || "1518@hcx",
+      payer_id: data.payer_id || "1518@hcx",
       policy_number: data.policy_number,
       status: "pending",
       current_step: "insurance_and_eligibility",
@@ -424,7 +424,30 @@ const mock = {
       },
       coverage_eligibility: {
         status: "pending",
-        correlation_id: "9e5c60bf-4014-4b72-a2f0-1fe4f9a75e61",
+        validation: {
+          status: "pending",
+          correlation_id: "9e5c60bf-4014-4b72-a2f0-1fe4f9a75e61",
+          outcome: null,
+          disposition: null,
+          inforce: null,
+          insurance_items: [],
+          errors: [],
+        },
+        benefits: {
+          status: "pending",
+          correlation_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          outcome: null,
+          insurance_items: [],
+          errors: [],
+        },
+        auth_requirements: {
+          status: "pending",
+          correlation_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          outcome: null,
+          auth_required: null,
+          insurance_items: [],
+          errors: [],
+        },
       },
     };
   },
@@ -435,7 +458,7 @@ const mock = {
       cashless_case_id,
       claim_id: 101,
       child_id: 12,
-      payer_code: "1518@hcx",
+      payer_id: "1518@hcx",
       policy_number: "POL-91711234567890-2026",
       status: "complete",
       current_step: "preauth_ready",
@@ -478,62 +501,77 @@ const mock = {
       },
       coverage_eligibility: {
         status: "complete",
-        correlation_id: "9e5c60bf-4014-4b72-a2f0-1fe4f9a75e61",
-        outcome: "complete",
-        disposition: "Eligible",
-        inforce: true,
-        auth_required: true,
-        insurance_items: [
-          {
-            coverage: "Coverage/POL-91711234567890-2026",
-            inforce: true,
-            items: [
-              {
-                sequence: 1,
-                category: { code: "SE", display: "Surgical" },
-                product_or_service: {
-                  code: "47562",
-                  display: "Laparoscopic cholecystectomy",
+        validation: {
+          status: "complete",
+          correlation_id: "9e5c60bf-4014-4b72-a2f0-1fe4f9a75e61",
+          outcome: "complete",
+          disposition: "Eligible",
+          inforce: true,
+          insurance_items: [
+            { coverage: "Coverage/POL-91711234567890-2026", inforce: true, items: [] },
+          ],
+          errors: [],
+        },
+        benefits: {
+          status: "complete",
+          correlation_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          outcome: "complete",
+          insurance_items: [
+            {
+              coverage: "Coverage/POL-91711234567890-2026",
+              inforce: true,
+              items: [
+                {
+                  sequence: 1,
+                  category: { code: "SE", display: "Surgical" },
+                  product_or_service: {
+                    code: "47562",
+                    display: "Laparoscopic cholecystectomy",
+                  },
+                  excluded: false,
+                  benefit: [
+                    {
+                      type: { code: "benefit", display: "Benefit Limit" },
+                      allowed: { type: "Money", value: 75000, currency: "INR" },
+                      used: { type: "Money", value: 0, currency: "INR" },
+                    },
+                  ],
+                  authorization_required: true,
+                  authorization_supporting: [
+                    { code: "MEDICAL_CERTIFICATE", display: "Medical Certificate" },
+                    { code: "ESTIMATE", display: "Estimated bill" },
+                  ],
                 },
-                excluded: false,
-                benefit: [
-                  {
-                    type: { code: "benefit", display: "Benefit Limit" },
-                    allowed: { type: "Money", value: 75000, currency: "INR" },
-                    used: { type: "Money", value: 0, currency: "INR" },
-                  },
-                ],
-                authorization_required: true,
-                authorization_supporting: [
-                  {
-                    code: "MEDICAL_CERTIFICATE",
-                    display: "Medical Certificate",
-                  },
-                  { code: "ESTIMATE", display: "Estimated bill" },
-                ],
-              },
-              {
-                sequence: 2,
-                category: { code: "ROOM", display: "Room rent" },
-                product_or_service: {
-                  code: "WARD-PVT",
-                  display: "Private Ward",
+                {
+                  sequence: 2,
+                  category: { code: "ROOM", display: "Room rent" },
+                  product_or_service: { code: "WARD-PVT", display: "Private Ward" },
+                  excluded: false,
+                  benefit: [
+                    {
+                      type: { code: "room-rent", display: "Room Rent Limit" },
+                      allowed: { type: "Money", value: 5000, currency: "INR" },
+                      used: { type: "Money", value: 0, currency: "INR" },
+                    },
+                  ],
+                  authorization_required: false,
+                  authorization_supporting: [],
                 },
-                excluded: false,
-                benefit: [
-                  {
-                    type: { code: "room-rent", display: "Room Rent Limit" },
-                    allowed: { type: "Money", value: 5000, currency: "INR" },
-                    used: { type: "Money", value: 0, currency: "INR" },
-                  },
-                ],
-                authorization_required: false,
-                authorization_supporting: [],
-              },
-            ],
-          },
-        ],
-        errors: [],
+              ],
+            },
+          ],
+          errors: [],
+        },
+        auth_requirements: {
+          status: "complete",
+          correlation_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          outcome: "complete",
+          auth_required: true,
+          insurance_items: [
+            { coverage: "Coverage/POL-91711234567890-2026", inforce: true, items: [] },
+          ],
+          errors: [],
+        },
       },
     };
   },
@@ -543,7 +581,7 @@ const mock = {
     await delay(800);
     return {
       claim_id: params.claim_id || 101,
-      payer_code: params.payer_code || "1518@hcx",
+      payer_id: params.payer_id || "1518@hcx",
       policy_number: params.policy_number || "POL-91711234567890-2026",
       patient: {
         id: 12,

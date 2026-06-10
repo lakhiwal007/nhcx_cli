@@ -364,7 +364,18 @@ function InsurancePlanPanel({ plan }) {
 
 function CoverageEligibilityPanel({ ce }) {
   if (!ce) return null;
-  const allItems = ce.insurance_items?.flatMap((ins) => ins.items || []) ?? [];
+  // Real backend returns nested validation/benefits/auth_requirements; flat is legacy mock
+  const inforce = ce.validation?.inforce ?? ce.inforce;
+  const auth_required = ce.auth_requirements?.auth_required ?? ce.auth_required;
+  const outcome = ce.validation?.outcome ?? ce.outcome;
+  const disposition = ce.validation?.disposition ?? ce.disposition;
+  const allErrors = [
+    ...(ce.validation?.errors || ce.errors || []),
+    ...(ce.benefits?.errors || []),
+    ...(ce.auth_requirements?.errors || []),
+  ];
+  const allItems = (ce.benefits?.insurance_items ?? ce.insurance_items ?? [])
+    .flatMap((ins) => ins.items || []);
   return (
     <Card title="Coverage Eligibility">
       <div
@@ -377,20 +388,20 @@ function CoverageEligibilityPanel({ ce }) {
         }}
       >
         <StatusBadge status={ce.status} />
-        {ce.inforce !== null && ce.inforce !== undefined && (
+        {inforce !== null && inforce !== undefined && (
           <span
-            className={`badge-modern badge-${ce.inforce ? "success" : "error"}`}
+            className={`badge-modern badge-${inforce ? "success" : "error"}`}
             style={{ fontSize: "10px" }}
           >
-            {ce.inforce ? "IN-FORCE" : "NOT IN-FORCE"}
+            {inforce ? "IN-FORCE" : "NOT IN-FORCE"}
           </span>
         )}
-        {ce.auth_required !== null && ce.auth_required !== undefined && (
+        {auth_required !== null && auth_required !== undefined && (
           <span
-            className={`badge-modern badge-${ce.auth_required ? "warning" : "success"}`}
+            className={`badge-modern badge-${auth_required ? "warning" : "success"}`}
             style={{ fontSize: "10px" }}
           >
-            {ce.auth_required ? "PREAUTH REQUIRED" : "NO PREAUTH NEEDED"}
+            {auth_required ? "PREAUTH REQUIRED" : "NO PREAUTH NEEDED"}
           </span>
         )}
       </div>
@@ -410,7 +421,7 @@ function CoverageEligibilityPanel({ ce }) {
         </div>
       )}
 
-      {ce.outcome && (
+      {outcome && (
         <div
           style={{
             fontSize: "13px",
@@ -420,11 +431,11 @@ function CoverageEligibilityPanel({ ce }) {
             marginBottom: "10px",
           }}
         >
-          Outcome: <strong>{ce.outcome}</strong>
+          Outcome: <strong>{outcome}</strong>
         </div>
       )}
 
-      {ce.disposition && (
+      {disposition && (
         <div
           style={{
             fontSize: "13px",
@@ -432,7 +443,7 @@ function CoverageEligibilityPanel({ ce }) {
             color: "var(--text-main)",
           }}
         >
-          {ce.disposition}
+          {disposition}
         </div>
       )}
 
@@ -486,9 +497,9 @@ function CoverageEligibilityPanel({ ce }) {
         </div>
       )}
 
-      {ce.errors?.length > 0 && (
+      {allErrors.length > 0 && (
         <div style={{ marginTop: "10px" }}>
-          {ce.errors.map((err, i) => (
+          {allErrors.map((err, i) => (
             <div
               key={i}
               style={{
@@ -537,7 +548,7 @@ export default function EligibilityPrep({ ctx }) {
       try {
         const res = await api.prepareCashless({
           child_id: patient.child_id,
-          payer_code: payer.participant_code,
+          payer_id: payer.participant_code,
           policy_number: policy.policyNumber || policy.policy_number,
           ...(admission_id && { admission_id }),
         });
@@ -546,7 +557,9 @@ export default function EligibilityPrep({ ctx }) {
         updateCaseState({
           cashless_case_id: res.cashless_case_id,
           claim_id: res.claim_id,
-          eligibility_correlation_id: res.coverage_eligibility?.correlation_id,
+          eligibility_correlation_id:
+            res.coverage_eligibility?.validation?.correlation_id ??
+            res.coverage_eligibility?.correlation_id,
         });
         if (!TERMINAL_STATUSES.includes(res.status)) {
           setPolling(true);
@@ -567,7 +580,9 @@ export default function EligibilityPrep({ ctx }) {
         const res = await api.getCashlessStatus(caseData.cashless_case_id);
         setCaseData(res);
         updateCaseState({
-          eligibility_correlation_id: res.coverage_eligibility?.correlation_id,
+          eligibility_correlation_id:
+            res.coverage_eligibility?.validation?.correlation_id ??
+            res.coverage_eligibility?.correlation_id,
         });
         if (TERMINAL_STATUSES.includes(res.status)) {
           setPolling(false);
