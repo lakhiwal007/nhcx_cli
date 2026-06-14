@@ -57,7 +57,7 @@ export const Button = ({
 
 export const StatusBadge = ({ status }) => {
   const getStatusConfig = (s) => {
-    switch (s?.toLowerCase()) {
+    switch (s != null ? String(s).toLowerCase() : "") {
       case "complete":
       case "approved":
       case "active":
@@ -84,7 +84,7 @@ export const StatusBadge = ({ status }) => {
   return (
     <span className={`badge-modern ${config.class}`}>
       <Icon size={14} />
-      {(status || "Unknown").replace(/_/g, " ")}
+      {(status != null ? String(status) : "Unknown").replace(/_/g, " ")}
     </span>
   );
 };
